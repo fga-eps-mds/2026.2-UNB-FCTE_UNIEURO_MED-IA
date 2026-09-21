@@ -6,7 +6,7 @@ Este guia trata de processo técnico. As expectativas de comportamento, respeito
 
 ## Padrão de Branch
 
-A `develop` é a **branch padrão** do repositório e a branch de integração: quem clona cai nela, e é dela que toda branch de trabalho sai. A `main` é a linha de release, ela recebe a `develop` apenas nas entregas de release major (R1, R2 e R3) e é o que o parceiro vê.
+A `develop` é a branch de integração: é dela que toda branch de trabalho sai e é para ela que todo Pull Request aponta. A `main` é a linha de release, ela recebe a `develop` apenas nas entregas de release major (R1, R2 e R3) e é o que o parceiro vê.
 
 - `feat/nome-da-funcionalidade`
 - `fix/nome-da-correcao`
@@ -49,7 +49,7 @@ Confirme localmente que os testes passam. Resultado de modelo só conta como res
 ## Pull Requests
 
 - Todo PR deve estar vinculado a uma Issue. Use `Closes #numero` na descrição.
-- O PR aponta para `develop`, não para `main`. Como a `develop` é a branch padrão, o `Closes #numero` fecha a issue automaticamente no merge.
+- O PR aponta para `develop`, não para `main`.
 - Solicite revisão de no mínimo 1 colega antes do merge.
 - O quality gate do SonarCloud precisa passar. PR com gate reprovado não é mergeado.
 - PRs sem Issue vinculada não serão aceitos.
