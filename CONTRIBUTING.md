@@ -44,7 +44,7 @@ Commits atômicos: uma alteração lógica por commit.
 
 ## Antes de abrir o Pull Request
 
-Confirme localmente que os testes passam. Resultado de modelo só conta como resultado se o experimento tiver run registrado no MLflow.
+Confirme localmente que os testes passam. Resultado de modelo só conta como resultado se puder ser reproduzido: registre no PR a versão dos dados, os parâmetros e as métricas obtidas. O registro dos experimentos em ferramenta de rastreamento será definido quando ela for configurada no repositório.
 
 ## Pull Requests
 
