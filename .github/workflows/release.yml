@@ -1,0 +1,80 @@
+name: Export de métricas
+
+# Requisito do professor (Discord da disciplina, 14/09): a cada PR fechado com
+# merge, o pipeline do repositório de código gera a release, coleta as métricas
+# do SonarCloud e anexa o .json à release. A coleta diária do repositório de
+# documentação copia esse arquivo para analytics-raw-data/, sem exigir secret
+# de escrita entre repositórios. Segue o exemplo indicado por ele (2024.2-SENTINELA).
+#
+# Rótulos do PR que controlam a versão:
+#   MAJOR RELEASE  vX.0.0 — release principal (R1, R2, R3); anexa também o código-fonte
+#   MINOR RELEASE  vX.Y.0
+#   (nenhum)       vX.Y.Z — correção
+#   NOT RELEASE    não gera release
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [closed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event.pull_request.merged == true &&
+      !contains(github.event.pull_request.labels.*.name, 'NOT RELEASE')
+    runs-on: ubuntu-latest
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SHA: ${{ github.event.pull_request.merge_commit_sha }}
+      BASE: ${{ github.event.pull_request.base.ref }}
+      MAJOR: ${{ contains(github.event.pull_request.labels.*.name, 'MAJOR RELEASE') }}
+      MINOR: ${{ contains(github.event.pull_request.labels.*.name, 'MINOR RELEASE') }}
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Definir versão
+        id: versao
+        run: python3 metrics/sonar_metrics.py versao >> "$GITHUB_OUTPUT"
+
+      - name: Aguardar a análise do SonarCloud
+        run: python3 metrics/sonar_metrics.py aguardar "$SHA"
+
+      - name: Coletar métricas do SonarCloud
+        id: metricas
+        run: python3 metrics/sonar_metrics.py coletar "${{ steps.versao.outputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar release
+        env:
+          TAG: ${{ steps.versao.outputs.tag }}
+          ARQUIVO: ${{ steps.metricas.outputs.arquivo }}
+          TITULO: ${{ github.event.pull_request.title }}
+          NUMERO: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          assets=("$ARQUIVO")
+
+          # Releases principais levam também o código-fonte e os testes compactados.
+          if [ "$MAJOR" = "true" ]; then
+            pacote="${GITHUB_REPOSITORY#*/}-${TAG}.zip"
+            git archive --format=zip -o "$pacote" "$SHA"
+            assets+=("$pacote")
+          fi
+
+          # O que entra na develop é versão intermediária; só a main publica release estável.
+          previa=()
+          [ "$BASE" = "develop" ] && previa=(--prerelease)
+
+          gh release create "$TAG" "${assets[@]}" --target "$SHA" --title "$TAG" \
+            --notes "Gerada pelo merge do PR #${NUMERO} (${TITULO}) na ${BASE}." "${previa[@]}"
