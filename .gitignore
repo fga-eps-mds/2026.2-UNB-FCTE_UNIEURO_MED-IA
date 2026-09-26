@@ -1,0 +1,4 @@
+﻿# Banco SQLite gerado localmente pelo script
+*.db
+*.db-shm
+*.db-wal
