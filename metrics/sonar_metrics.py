@@ -105,12 +105,26 @@ def aguardar(sha, limite_s=600, intervalo_s=20):
 
 
 def coletar(tag):
-    consulta = urllib.parse.urlencode({
-        "component": chave_sonar(),
-        "metricKeys": ",".join(METRICAS),
-        "ps": 500,
-    })
-    dados = obter_json(f"{SONAR}/measures/component_tree?{consulta}")
+    """Grava a resposta de measures/component_tree, o mesmo endpoint do parser do
+    repositório Analytics da disciplina e do exemplo indicado pelo professor.
+
+    O notebook de análise da disciplina percorre `components` filtrando por arquivo,
+    diretório e testes (qualifier FIL, DIR e UTS), por isso a métrica por arquivo é
+    necessária. O valor agregado do projeto inteiro fica em `baseComponent`.
+    A árvore é paginada (no máximo 500 nós por página); todas as páginas são reunidas."""
+    parametros = {"component": chave_sonar(), "metricKeys": ",".join(METRICAS), "ps": 500}
+    dados, componentes, pagina = None, [], 1
+    while True:
+        consulta = urllib.parse.urlencode({**parametros, "p": pagina})
+        resposta = obter_json(f"{SONAR}/measures/component_tree?{consulta}")
+        dados = dados or resposta
+        componentes += resposta.get("components", [])
+        total = resposta.get("paging", {}).get("total", 0)
+        if len(componentes) >= total or not resposta.get("components"):
+            break
+        pagina += 1
+    dados["components"] = componentes
+    dados["paging"] = {"pageIndex": 1, "pageSize": len(componentes), "total": len(componentes)}
 
     agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
     nome = f"fga-eps-mds-{repositorio().split('/')[1]}-{agora:%m-%d-%Y-%H-%M-%S}-{tag}.json"
