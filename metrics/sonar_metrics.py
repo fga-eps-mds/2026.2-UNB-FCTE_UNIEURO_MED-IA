@@ -11,11 +11,11 @@ do próprio repositório de código, com o nome
 
 Subcomandos:
     versao                  imprime tag=vX.Y.Z (formato de $GITHUB_OUTPUT)
-    aguardar <sha>          espera o SonarCloud analisar o commit do merge
+    aguardar <merged_at>    espera o SonarCloud analisar a branch depois do merge
     coletar <tag>           grava o .json em analytics-raw-data/ e imprime arquivo=<caminho>
 
 Usa apenas a biblioteca padrão. Variáveis de ambiente: GH_TOKEN, GITHUB_REPOSITORY,
-MAJOR e MINOR ("true"/"false", vindas dos rótulos do PR).
+BASE (branch de destino do PR) e MAJOR e MINOR ("true"/"false", vindas dos rótulos do PR).
 """
 
 import json
@@ -60,6 +60,16 @@ def chave_sonar():
     return f"{ORGANIZACAO_SONAR}_{repositorio().split('/')[1]}"
 
 
+def filtro_ramo():
+    """Parâmetro de branch para a API do SonarCloud.
+
+    No SonarCloud a branch principal é a `main`, e a `develop` é analisada à parte;
+    sem o parâmetro, a API responde sempre com a `main`. BASE é a branch de destino
+    do PR, definida pelo workflow."""
+    ramo = os.environ.get("BASE")
+    return {"branch": ramo} if ramo else {}
+
+
 def obter_json(url, token=None):
     cabecalhos = {"Accept": "application/json"}
     if token:
@@ -86,22 +96,32 @@ def versao():
     print(f"tag=v{x}.{y}.{z}")
 
 
-def aguardar(sha, limite_s=600, intervalo_s=20):
+def aguardar(desde, limite_s=600, intervalo_s=20):
     """O merge dispara o workflow do SonarCloud em paralelo; sem esperar por ele,
-    as métricas coletadas seriam as da versão anterior."""
-    url = f"{SONAR}/project_analyses/search?project={chave_sonar()}&ps=20"
+    as métricas coletadas seriam as da versão anterior.
+
+    Espera até a última análise da branch de destino ser posterior ao merge. Usa
+    project_branches/list porque project_analyses/search só aceita a branch
+    principal: no SonarCloud a `develop` é uma branch de curta duração e a API
+    responde "Branch 'develop' is not of type LONG"."""
+    marco = datetime.fromisoformat(desde.replace("Z", "+00:00"))
+    ramo = os.environ.get("BASE")
+    url = f"{SONAR}/project_branches/list?{urllib.parse.urlencode({'project': chave_sonar()})}"
     inicio = time.monotonic()
     while time.monotonic() - inicio < limite_s:
         try:
-            analises = obter_json(url).get("analyses", [])
-            if any(a.get("revision") == sha for a in analises):
-                print(f"Análise do commit {sha[:7]} disponível no SonarCloud.")
-                return
-        except (urllib.error.URLError, TimeoutError) as erro:
+            ramos = obter_json(url).get("branches", [])
+            alvo = next((b for b in ramos if (b["name"] == ramo if ramo else b.get("isMain"))), None)
+            if alvo and alvo.get("analysisDate"):
+                analise = datetime.strptime(alvo["analysisDate"], "%Y-%m-%dT%H:%M:%S%z")
+                if analise >= marco:
+                    print(f"Análise da branch {alvo['name']} de {analise:%d/%m %H:%M} disponível no SonarCloud.")
+                    return
+        except (urllib.error.URLError, TimeoutError, ValueError) as erro:
             print(f"Consulta ao SonarCloud falhou ({erro}); tentando de novo.")
         time.sleep(intervalo_s)
-    print(f"::warning::O SonarCloud não publicou a análise de {sha[:7]} em {limite_s // 60} min; "
-          "as métricas refletem a última análise disponível.")
+    print(f"::warning::O SonarCloud não publicou análise da branch {ramo or 'principal'} posterior ao merge "
+          f"em {limite_s // 60} min; as métricas refletem a última análise disponível.")
 
 
 def coletar(tag):
@@ -112,7 +132,7 @@ def coletar(tag):
     diretório e testes (qualifier FIL, DIR e UTS), por isso a métrica por arquivo é
     necessária. O valor agregado do projeto inteiro fica em `baseComponent`.
     A árvore é paginada (no máximo 500 nós por página); todas as páginas são reunidas."""
-    parametros = {"component": chave_sonar(), "metricKeys": ",".join(METRICAS), "ps": 500}
+    parametros = {"component": chave_sonar(), "metricKeys": ",".join(METRICAS), "ps": 500, **filtro_ramo()}
     dados, componentes, pagina = None, [], 1
     while True:
         consulta = urllib.parse.urlencode({**parametros, "p": pagina})

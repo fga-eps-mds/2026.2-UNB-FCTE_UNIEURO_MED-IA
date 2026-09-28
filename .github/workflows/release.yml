@@ -34,6 +34,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SHA: ${{ github.event.pull_request.merge_commit_sha }}
+      MERGED_AT: ${{ github.event.pull_request.merged_at }}
       BASE: ${{ github.event.pull_request.base.ref }}
       MAJOR: ${{ contains(github.event.pull_request.labels.*.name, 'MAJOR RELEASE') }}
       MINOR: ${{ contains(github.event.pull_request.labels.*.name, 'MINOR RELEASE') }}
@@ -49,7 +50,7 @@ jobs:
         run: python3 metrics/sonar_metrics.py versao >> "$GITHUB_OUTPUT"
 
       - name: Aguardar a análise do SonarCloud
-        run: python3 metrics/sonar_metrics.py aguardar "$SHA"
+        run: python3 metrics/sonar_metrics.py aguardar "$MERGED_AT"
 
       - name: Coletar métricas do SonarCloud
         id: metricas
