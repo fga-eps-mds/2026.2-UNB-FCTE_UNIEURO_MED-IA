@@ -1,9 +1,13 @@
 import json
+import socket
+import threading
+from urllib.request import urlopen
 
 import pytest
 from PIL import Image
 
 from exportacao import aparelho
+from exportacao.conferir import TOLERANCIA
 from exportacao.exportar import exportar_onnx
 from exportacao.imagens import ARQUIVOS
 
@@ -35,6 +39,7 @@ def test_prepara_pagina_modelo_desenhos_e_escores(onnx_pequeno, pasta_de_imagens
     for paciente in referencia["pacientes"]:
         assert 0 <= paciente["escore"] <= 1
         assert all((destino / paciente["nome"] / arquivo).exists() for arquivo in ARQUIVOS)
+    assert referencia["tolerancia"] == TOLERANCIA
     assert json.loads((destino / "referencia.json").read_text(encoding="utf-8")) == referencia
 
 
@@ -60,8 +65,23 @@ def test_main_prepara_e_serve_na_porta_informada(onnx_pequeno, pasta_de_imagens,
     assert (destino / "referencia.json").exists()
 
 
-def test_endereco_na_rede_e_um_ipv4():
-    partes = aparelho.endereco_na_rede().split(".")
+def test_servidor_entrega_os_arquivos_preparados(onnx_pequeno, pasta_de_imagens, tmp_path):
+    destino = tmp_path / "aparelho"
+    aparelho.preparar(onnx_pequeno, pasta_de_imagens, 1, destino)
+    servidor = aparelho.criar_servidor(destino, 0)
+    porta = servidor.server_address[1]
+    linha = threading.Thread(target=servidor.serve_forever)
+    linha.start()
+    try:
+        for arquivo in ("index.html", "referencia.json", "modelo.onnx", "paciente-001/clock.png"):
+            with urlopen(f"http://127.0.0.1:{porta}/{arquivo}") as resposta:
+                assert resposta.read() == (destino / arquivo).read_bytes()
+    finally:
+        servidor.shutdown()
+        servidor.server_close()
+        linha.join()
 
-    assert len(partes) == 4
-    assert all(parte.isdigit() for parte in partes)
+
+def test_endereco_na_rede_pertence_a_este_computador():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as conexao:
+        conexao.bind((aparelho.endereco_na_rede(), 0))

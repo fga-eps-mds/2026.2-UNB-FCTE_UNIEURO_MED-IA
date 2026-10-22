@@ -35,8 +35,6 @@
 </table>
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.wasm.min.js"></script>
 <script>
-const TOLERANCIA = 1e-4;
-
 function descreverAparelho() {
   const sistema = navigator.userAgent.match(/Android [\d.]+/) || navigator.userAgent.match(/Windows NT [\d.]+/);
   const nucleos = navigator.hardwareConcurrency ? `${navigator.hardwareConcurrency} núcleos` : "núcleos não informados";
@@ -112,7 +110,7 @@ async function rodar() {
 
     const restantes = tempos.slice(1);
     const media = restantes.length ? restantes.reduce((soma, tempo) => soma + tempo, 0) / restantes.length : tempos[0];
-    const aprovada = maiorDiferenca <= TOLERANCIA;
+    const aprovada = maiorDiferenca <= referencia.tolerancia;
 
     escrever("avaliacoes", String(tempos.length));
     escrever("download", `${download.toFixed(1)} s`);
@@ -120,7 +118,7 @@ async function rodar() {
     escrever("primeira", `${tempos[0].toFixed(2)} s`);
     escrever("media", `${media.toFixed(2)} s`);
     escrever("computador", `${referencia.segundos_por_avaliacao_no_computador.toFixed(2)} s`);
-    escrever("diferenca", `${maiorDiferenca.toExponential(2)} (${aprovada ? "dentro" : "fora"} da tolerância de 1e-4)`,
+    escrever("diferenca", `${maiorDiferenca.toExponential(2)} (${aprovada ? "dentro" : "fora"} da tolerância de ${referencia.tolerancia})`,
       aprovada ? "ok" : "erro");
     escrever("aparelho", descreverAparelho());
     document.getElementById("resultado").hidden = false;

@@ -81,15 +81,8 @@ que só o script de treino confirma. O artigo não informa a ativação nem o co
 pacientes incluem pacientes de treino, por isso a acurácia e o AUC desta tabela
 servem para comparar as escolhas e não medem o desempenho do modelo.
 
-A exportação e a conferência rodam com um comando. As dependências são instaladas
-com o [uv](https://docs.astral.sh/uv/), a partir do `pyproject.toml` e do `uv.lock`.
-
-```bash
-uv sync
-uv run python -m exportacao.gerar model.pt modelo.onnx --imagens images --quantidade 138
-```
-
-O comando grava o `.onnx`, calcula o escore de cada paciente com o modelo original
+A exportação e a conferência rodam com o comando do passo 4 de
+[Como reproduzir](#como-reproduzir). O comando grava o `.onnx`, calcula o escore de cada paciente com o modelo original
 e com o arquivo exportado e informa a maior diferença. A pasta de `--imagens` tem
 uma subpasta por paciente, com `clock.png`, `copy.png` e `trail.png`, como no
 conjunto de dados. Sem essa opção a conferência usa imagens aleatórias.
@@ -128,7 +121,7 @@ Limites deste resultado:
 - O tempo foi medido em um computador. Ele não substitui a medição no tablet, e a
   medição em aparelho está em [Execução em um celular Android](#execução-em-um-celular-android).
 
-Os testes automatizados de [`exportacao`](../exportacao) cobrem o modelo, a leitura
+Os testes automatizados em [`tests`](../tests) cobrem o modelo, a leitura
 das imagens, a exportação, a conferência, a medição e a preparação da página de
 conferência no aparelho com um modelo pequeno:
 
@@ -138,7 +131,8 @@ uv run pytest --cov
 
 ## Como reproduzir
 
-1. Instalar as dependências na raiz do repositório:
+1. Instalar as dependências na raiz do repositório, com o
+   [uv](https://docs.astral.sh/uv/), a partir do `pyproject.toml` e do `uv.lock`:
 
    ```bash
    uv sync
@@ -193,11 +187,7 @@ serve uma página na rede Wi-Fi local, o aparelho abre a página, baixa o modelo
 avaliações do conjunto de dados, calcula o escore de cada uma e compara com o escore
 que o ONNX Runtime do computador calculou para os mesmos desenhos.
 
-```bash
-uv run python -m exportacao.aparelho modelo.onnx --imagens images
-```
-
-O comando mostra o endereço que o aparelho deve abrir. O aparelho e o computador
+O comando do passo 5 de [Como reproduzir](#como-reproduzir) mostra o endereço que o aparelho deve abrir. O aparelho e o computador
 precisam estar na mesma rede, e o firewall do computador precisa permitir conexões do
 Python na porta 8000. Os desenhos vão para a pasta `aparelho-teste`, que o `.gitignore`
 exclui, com os pacientes renomeados para `paciente-001`, `paciente-002` e assim por
@@ -264,7 +254,8 @@ e o contrato da Tabela 4, e ainda não foi executado no aplicativo.
    `aparelho-teste/referencia.json`.
 
 O relato aberto sobre o *config plugin* com `npx expo prebuild`, citado em
-[Formato proposto](#formato-proposto), é o primeiro ponto a observar no passo 1.
+[Formato proposto](#formato-proposto), é um ponto a observar ao gerar o build do
+aplicativo com a biblioteca.
 
 ## Pontos que precisam de decisão
 
@@ -274,16 +265,13 @@ resolvido pela exportação.
 1. **Classes da saída.** A arquitetura espera a probabilidade de três classes:
    normal, CCL e demência. O modelo treinado devolve só a probabilidade de CCL,
    porque o conjunto de dados separa os pacientes pelo MoCA menor que 25.
-2. **Terceira tarefa.** O conjunto de dados usa o teste de trilhas. A arquitetura
-   fala em figura geométrica e registra como pendência a escolha entre hexágono e
-   pentágono. Um modelo treinado com trilhas não avalia outra figura.
-3. **Mapas de calor.** A arquitetura pede um mapa por desenho e recomenda que o
+2. **Mapas de calor.** A arquitetura pede um mapa por desenho e recomenda que o
    modelo já os devolva como saída, porque o runtime do tablet pode não calcular
    gradiente. O arquivo exportado devolve só a probabilidade.
-4. **Tamanho no APK.** O arquivo tem 185,2 MB sem compressão. Ele também é
-   derivado do conjunto de dados, então segue a mesma restrição dos pesos: só é
-   publicado depois da autorização do *Product Owner*. O `.gitignore` impede que um
-   arquivo `.onnx` seja versionado por engano.
+3. **Tamanho no APK.** O arquivo tem 185,2 MB sem compressão. O `.gitignore` impede
+   que um arquivo `.onnx` seja versionado por engano.
+4. **Publicação dos pesos.** Na [Ata 09](https://github.com/fga-eps-mds/2026.2-UNB-FCTE_UNIEURO_MED-DOCS/blob/main/docs/atas-reunioes/Ata-09-EPS-2026-10-05-PO.md) o *Product Owner* não se opôs à
+   publicação dos pesos do modelo treinado pela equipe, e a decisão ficou com a equipe.
 5. **Tablet.** O modelo do aparelho e a versão do Android ainda não foram informados.
 6. **Limite de tempo.** A issue pede o tempo de cálculo dentro do limite combinado
    com o parceiro, e esse limite ainda não foi combinado.
@@ -303,3 +291,4 @@ resolvido pela exportação.
 |---|---|---|---|---|---|
 | 1.0 | Proposta de formato de exportação e registro da exportação do modelo treinado | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 12/10/2026 | A definir | A definir |
 | 1.1 | Medição de memória no computador, execução em celular Android, passo a passo de carregamento no aplicativo e instruções de reprodução | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 22/10/2026 | A definir | A definir |
+| 1.2 | Testes na pasta `tests`, atualização dos pontos de decisão conforme a Ata 09 e comandos concentrados em Como reproduzir | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 22/10/2026 | A definir | A definir |

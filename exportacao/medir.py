@@ -10,12 +10,13 @@ from exportacao.imagens import Amostra
 
 @dataclass(frozen=True)
 class Medicao:
+    escores: tuple[float, ...]
     segundos_por_avaliacao: float
     memoria_mb: float
 
 
 def medir_execucao(caminho: Path, amostras: list[Amostra]) -> Medicao:
-    """Mede o tempo por avaliação e a memória que a sessão do ONNX Runtime ocupa no processo."""
+    """Calcula o escore de cada amostra e mede o tempo e a memória da sessão do ONNX Runtime."""
     if not amostras:
         raise ValueError("O conjunto de medição está vazio.")
     processo = psutil.Process()
@@ -23,9 +24,8 @@ def medir_execucao(caminho: Path, amostras: list[Amostra]) -> Medicao:
 
     sessao = abrir_sessao(caminho)
     inicio = time.perf_counter()
-    for amostra in amostras:
-        escore_exportado(sessao, amostra)
+    escores = tuple(escore_exportado(sessao, amostra) for amostra in amostras)
     segundos = (time.perf_counter() - inicio) / len(amostras)
 
     memoria_mb = (processo.memory_info().rss - memoria_antes) / 1e6
-    return Medicao(segundos_por_avaliacao=segundos, memoria_mb=memoria_mb)
+    return Medicao(escores=escores, segundos_por_avaliacao=segundos, memoria_mb=memoria_mb)

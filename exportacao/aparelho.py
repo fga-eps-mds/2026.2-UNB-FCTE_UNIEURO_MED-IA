@@ -12,7 +12,7 @@ import socket
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from exportacao.conferir import abrir_sessao, escore_exportado
+from exportacao.conferir import TOLERANCIA
 from exportacao.exportar import ENTRADAS
 from exportacao.imagens import ARQUIVOS, amostras_da_pasta
 from exportacao.medir import medir_execucao
@@ -33,22 +33,22 @@ def preparar(onnx: Path, imagens: Path, quantidade: int, destino: Path) -> dict:
 
     pacientes = sorted(caminho for caminho in imagens.iterdir() if caminho.is_dir())[:quantidade]
     amostras = amostras_da_pasta(imagens, quantidade, LADO)
-    sessao = abrir_sessao(onnx)
     medicao = medir_execucao(onnx, amostras)
 
     referencia = {
         "entradas": list(ENTRADAS),
         "arquivos": list(ARQUIVOS),
         "lado": LADO,
+        "tolerancia": TOLERANCIA,
         "segundos_por_avaliacao_no_computador": medicao.segundos_por_avaliacao,
         "pacientes": [],
     }
-    for numero, (paciente, amostra) in enumerate(zip(pacientes, amostras), start=1):
+    for numero, (paciente, escore) in enumerate(zip(pacientes, medicao.escores), start=1):
         nome = f"paciente-{numero:03d}"
         (destino / nome).mkdir(exist_ok=True)
         for arquivo in ARQUIVOS:
             shutil.copyfile(paciente / arquivo, destino / nome / arquivo)
-        referencia["pacientes"].append({"nome": nome, "escore": escore_exportado(sessao, amostra)})
+        referencia["pacientes"].append({"nome": nome, "escore": escore})
 
     (destino / "referencia.json").write_text(json.dumps(referencia, indent=2), encoding="utf-8")
     return referencia
@@ -64,9 +64,14 @@ def endereco_na_rede() -> str:
             return "127.0.0.1"
 
 
-def servir(pasta: Path, porta: int) -> None:
+def criar_servidor(pasta: Path, porta: int) -> ThreadingHTTPServer:
+    """Servidor que entrega a pasta preparada a qualquer aparelho da rede local."""
     manipulador = functools.partial(SimpleHTTPRequestHandler, directory=str(pasta))
-    with ThreadingHTTPServer(("0.0.0.0", porta), manipulador) as servidor:
+    return ThreadingHTTPServer(("0.0.0.0", porta), manipulador)
+
+
+def servir(pasta: Path, porta: int) -> None:
+    with criar_servidor(pasta, porta) as servidor:
         print(f"Abra no navegador do aparelho, na mesma rede Wi-Fi: http://{endereco_na_rede()}:{porta}")
         print("Ctrl+C encerra.")
         try:
