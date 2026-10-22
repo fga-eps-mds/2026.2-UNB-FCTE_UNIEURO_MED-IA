@@ -31,9 +31,10 @@ explicit = true
 torch = { index = "pytorch-cpu" }
 
 [tool.pytest.ini_options]
-testpaths = ["exportacao"]
+testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.coverage.run]
 source = ["."]
-omit = ["*/test_*.py", "*/conftest.py", "metrics/*"]
+omit = ["tests/*", "metrics/*"]
 relative_files = true

@@ -56,7 +56,7 @@ uv sync
 
 ## Antes de abrir o Pull Request
 
-Confirme localmente que os testes passam, com `uv run pytest --cov`. Os testes ficam ao lado do código, em arquivos `test_*.py`. Resultado de modelo só conta como resultado se puder ser reproduzido: registre no PR a versão dos dados, os parâmetros e as métricas obtidas. O registro dos experimentos em ferramenta de rastreamento será definido quando ela for configurada no repositório.
+Confirme localmente que os testes passam, com `uv run pytest --cov`. Os testes ficam na pasta `tests`, separados do código, em arquivos `test_*.py`. Resultado de modelo só conta como resultado se puder ser reproduzido: registre no PR a versão dos dados, os parâmetros e as métricas obtidas. O registro dos experimentos em ferramenta de rastreamento será definido quando ela for configurada no repositório.
 
 ## Pull Requests
 
