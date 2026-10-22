@@ -1,7 +1,7 @@
 # Exportação do modelo para o tablet
 
 Proposta de formato de exportação do modelo de pontuação e registro da exportação
-feita para a issue #6. O formato ainda precisa do aceite do time do aplicativo, e a
+feita para a issue #6. O time do aplicativo aceitou o formato em 22/10/2026, e a
 situação de cada atividade da issue está em [Situação da issue](#situação-da-issue).
 
 ## Formato proposto
@@ -36,7 +36,7 @@ Três motivos sustentam a proposta:
 3. O modelo treinado foi exportado para esse formato, e o arquivo devolveu os
    mesmos escores do original em 138 pacientes, como descrito abaixo.
 
-Um ponto precisa ser testado no aplicativo antes do aceite. Há um relato aberto de
+Um ponto ainda precisa ser testado no aplicativo. Há um relato aberto de
 que o *config plugin* do `onnxruntime-react-native` 1.23.2 não foi reconhecido pelo
 `npx expo prebuild`
 ([issue 548 dos exemplos do ONNX Runtime](https://github.com/microsoft/onnxruntime-inference-examples/issues/548)).
@@ -280,7 +280,7 @@ resolvido pela exportação.
 
 | Atividade ou critério | Situação |
 |-----------------------|----------|
-| Escolher o formato de exportação junto com o time do aplicativo | ONNX com ONNX Runtime, proposto neste documento. Falta o aceite do time do aplicativo |
+| Escolher o formato de exportação junto com o time do aplicativo | ONNX com ONNX Runtime, proposto neste documento e aceito pelo time do aplicativo em 22/10/2026 |
 | Conferir que o modelo exportado dá os mesmos escores que o original | Feita com o modelo treinado em 138 pacientes no computador (Tabela 3) e em 10 no celular (Tabela 5). Os dois itens a confirmar da Tabela 2 dependem do script de treino |
 | Medir o tempo de cálculo e o uso de memória no tablet do parceiro | Tempo e memória medidos no computador (Tabela 3) e tempo medido em um celular Android (Tabela 5). A medição no tablet continua pendente |
 | Instruções de como o aplicativo carrega o modelo | Contrato na Tabela 4 e passo a passo em [Carregamento no aplicativo](#carregamento-no-aplicativo) |
@@ -291,4 +291,4 @@ resolvido pela exportação.
 |---|---|---|---|---|---|
 | 1.0 | Proposta de formato de exportação e registro da exportação do modelo treinado | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 12/10/2026 | A definir | A definir |
 | 1.1 | Medição de memória no computador, execução em celular Android, passo a passo de carregamento no aplicativo e instruções de reprodução | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 22/10/2026 | A definir | A definir |
-| 1.2 | Testes na pasta `tests`, atualização dos pontos de decisão conforme a Ata 09 e comandos concentrados em Como reproduzir | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 22/10/2026 | A definir | A definir |
+| 1.2 | Testes na pasta `tests`, atualização dos pontos de decisão conforme a Ata 09, comandos concentrados em Como reproduzir e registro do aceite do formato | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 22/10/2026 | A definir | A definir |
