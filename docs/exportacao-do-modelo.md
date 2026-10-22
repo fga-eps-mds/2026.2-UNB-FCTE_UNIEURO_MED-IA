@@ -198,15 +198,15 @@ diante.
 | Medida | Resultado |
 |--------|-----------|
 | Aparelho | Celular com Android 10 e 8 núcleos |
-| Abertura do modelo, incluindo o download pela rede local | 84,5 s |
-| Primeira avaliação | 16,94 s |
-| Tempo médio por avaliação, sem a primeira | 13,95 s |
+| Abertura da sessão | 1,9 s |
+| Primeira avaliação | 12,32 s |
+| Tempo médio por avaliação, sem a primeira | 15,30 s |
 | Maior diferença de escore em 10 avaliações | 1,49 × 10⁻⁷ |
 
 **Fonte:** [Artur Mendonça Arruda](https://github.com/ArtyMend07), 2026. Página
 [`exportacao/aparelho/index.html`](../exportacao/aparelho/index.html), ONNX Runtime Web 1.30.0.
-Medição de 22/10/2026. Nesta medição a abertura do modelo inclui o download dos
-185,2 MB pela rede local. A página mostra o download e a abertura da sessão separados.
+Medição de 22/10/2026. O download dos 185,2 MB pela rede local levou 80,4 s e não
+entra na tabela.
 
 Limites deste resultado:
 
