@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conferência no aparelho</title>
+<style>
+  :root { color-scheme: light dark; --fundo: #ffffff; --texto: #1b1b1b; --borda: #c8c8c8; --ok: #1a7f37; --erro: #c62828; }
+  @media (prefers-color-scheme: dark) { :root { --fundo: #161616; --texto: #ececec; --borda: #444444; --ok: #4ac26b; --erro: #ff6b6b; } }
+  body { margin: 0; padding: 16px; font: 16px/1.5 system-ui, sans-serif; background: var(--fundo); color: var(--texto); }
+  h1 { font-size: 1.3rem; margin: 0 0 12px; }
+  button { font: inherit; padding: 12px 20px; border-radius: 8px; border: 1px solid var(--borda); width: 100%; }
+  table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+  td { border-bottom: 1px solid var(--borda); padding: 6px 4px; vertical-align: top; }
+  td:first-child { width: 55%; }
+  .ok { color: var(--ok); } .erro { color: var(--erro); }
+  #progresso { margin-top: 12px; min-height: 1.5em; }
+</style>
+</head>
+<body>
+<h1>Conferência do modelo no aparelho</h1>
+<button id="rodar">Rodar avaliações</button>
+<div id="progresso"></div>
+<table id="resultado" hidden>
+  <tbody>
+    <tr><td>Avaliações</td><td id="avaliacoes"></td></tr>
+    <tr><td>Download do modelo pela rede</td><td id="download"></td></tr>
+    <tr><td>Abertura da sessão</td><td id="abertura"></td></tr>
+    <tr><td>Primeira avaliação</td><td id="primeira"></td></tr>
+    <tr><td>Tempo médio por avaliação, sem a primeira</td><td id="media"></td></tr>
+    <tr><td>Tempo por avaliação no computador</td><td id="computador"></td></tr>
+    <tr><td>Maior diferença de escore para o computador</td><td id="diferenca"></td></tr>
+    <tr><td>Aparelho</td><td id="aparelho"></td></tr>
+  </tbody>
+</table>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.wasm.min.js"></script>
+<script>
+const TOLERANCIA = 1e-4;
+
+function descreverAparelho() {
+  const sistema = navigator.userAgent.match(/Android [\d.]+/) || navigator.userAgent.match(/Windows NT [\d.]+/);
+  const nucleos = navigator.hardwareConcurrency ? `${navigator.hardwareConcurrency} núcleos` : "núcleos não informados";
+  return `${sistema ? sistema[0] : "Sistema não informado"} · ${nucleos}`;
+}
+
+function escrever(id, texto, classe) {
+  const celula = document.getElementById(id);
+  celula.textContent = texto;
+  celula.className = classe || "";
+}
+
+async function lerDesenho(caminho, lado) {
+  const resposta = await fetch(caminho);
+  const imagem = await createImageBitmap(await resposta.blob(), {
+    colorSpaceConversion: "none",
+    premultiplyAlpha: "none",
+  });
+  const tela = document.createElement("canvas");
+  tela.width = lado;
+  tela.height = lado;
+  const contexto = tela.getContext("2d", { willReadFrequently: true });
+  contexto.drawImage(imagem, 0, 0, lado, lado);
+  const rgba = contexto.getImageData(0, 0, lado, lado).data;
+
+  const pixels = lado * lado;
+  const canais = new Float32Array(3 * pixels);
+  for (let indice = 0; indice < pixels; indice++) {
+    canais[indice] = rgba[4 * indice] / 255;
+    canais[pixels + indice] = rgba[4 * indice + 1] / 255;
+    canais[2 * pixels + indice] = rgba[4 * indice + 2] / 255;
+  }
+  return new ort.Tensor("float32", canais, [1, 3, lado, lado]);
+}
+
+async function avaliar(sessao, referencia, paciente) {
+  const entradas = {};
+  for (let posicao = 0; posicao < referencia.entradas.length; posicao++) {
+    const caminho = `${paciente.nome}/${referencia.arquivos[posicao]}`;
+    entradas[referencia.entradas[posicao]] = await lerDesenho(caminho, referencia.lado);
+  }
+  const inicio = performance.now();
+  const saida = await sessao.run(entradas);
+  const segundos = (performance.now() - inicio) / 1000;
+  return { escore: saida[sessao.outputNames[0]].data[0], segundos };
+}
+
+async function rodar() {
+  const botao = document.getElementById("rodar");
+  const progresso = document.getElementById("progresso");
+  botao.disabled = true;
+  try {
+    const referencia = await (await fetch("referencia.json")).json();
+
+    progresso.textContent = "Baixando o modelo...";
+    const inicioDownload = performance.now();
+    const modelo = await (await fetch("modelo.onnx")).arrayBuffer();
+    const download = (performance.now() - inicioDownload) / 1000;
+
+    progresso.textContent = "Abrindo a sessão...";
+    const inicioAbertura = performance.now();
+    const sessao = await ort.InferenceSession.create(modelo, { executionProviders: ["wasm"] });
+    const abertura = (performance.now() - inicioAbertura) / 1000;
+
+    const tempos = [];
+    let maiorDiferenca = 0;
+    for (const [posicao, paciente] of referencia.pacientes.entries()) {
+      progresso.textContent = `Avaliação ${posicao + 1} de ${referencia.pacientes.length}...`;
+      const { escore, segundos } = await avaliar(sessao, referencia, paciente);
+      tempos.push(segundos);
+      maiorDiferenca = Math.max(maiorDiferenca, Math.abs(escore - paciente.escore));
+    }
+
+    const restantes = tempos.slice(1);
+    const media = restantes.length ? restantes.reduce((soma, tempo) => soma + tempo, 0) / restantes.length : tempos[0];
+    const aprovada = maiorDiferenca <= TOLERANCIA;
+
+    escrever("avaliacoes", String(tempos.length));
+    escrever("download", `${download.toFixed(1)} s`);
+    escrever("abertura", `${abertura.toFixed(1)} s`);
+    escrever("primeira", `${tempos[0].toFixed(2)} s`);
+    escrever("media", `${media.toFixed(2)} s`);
+    escrever("computador", `${referencia.segundos_por_avaliacao_no_computador.toFixed(2)} s`);
+    escrever("diferenca", `${maiorDiferenca.toExponential(2)} (${aprovada ? "dentro" : "fora"} da tolerância de 1e-4)`,
+      aprovada ? "ok" : "erro");
+    escrever("aparelho", descreverAparelho());
+    document.getElementById("resultado").hidden = false;
+    progresso.textContent = "Concluído.";
+  } catch (erro) {
+    progresso.textContent = `Falhou: ${erro.message || erro}`;
+    progresso.className = "erro";
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+document.getElementById("rodar").addEventListener("click", rodar);
+</script>
+</body>
+</html>

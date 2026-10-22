@@ -10,3 +10,6 @@ coverage.xml
 *.onnx.data
 *.pt
 *.pth
+
+# Pasta montada por exportacao.aparelho, com desenhos do conjunto de dados
+/aparelho-teste/
