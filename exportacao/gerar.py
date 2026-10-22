@@ -5,15 +5,15 @@ Uso, na raiz do repositório:
 """
 
 import argparse
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from torch import nn
 
-from exportacao.conferir import Conferencia, abrir_sessao, conferir_escores, escore_exportado
+from exportacao.conferir import Conferencia, conferir_escores
 from exportacao.exportar import exportar_onnx
 from exportacao.imagens import Amostra, amostras_aleatorias, amostras_da_pasta
+from exportacao.medir import Medicao, medir_execucao
 from exportacao.modelo import LADO, carregar_modelo
 
 
@@ -22,24 +22,18 @@ class Resultado:
     parametros: int
     tamanho_mb: float
     conferencia: Conferencia
-    segundos_por_avaliacao: float
+    medicao: Medicao
 
 
 def gerar(modelo: nn.Module, destino: Path, amostras: list[Amostra], lado: int) -> Resultado:
     caminho = exportar_onnx(modelo, destino, lado)
     conferencia = conferir_escores(modelo, caminho, amostras)
 
-    sessao = abrir_sessao(caminho)
-    inicio = time.perf_counter()
-    for amostra in amostras:
-        escore_exportado(sessao, amostra)
-    segundos = (time.perf_counter() - inicio) / len(amostras)
-
     return Resultado(
         parametros=sum(parametro.numel() for parametro in modelo.parameters()),
         tamanho_mb=caminho.stat().st_size / 1e6,
         conferencia=conferencia,
-        segundos_por_avaliacao=segundos,
+        medicao=medir_execucao(caminho, amostras),
     )
 
 
@@ -64,7 +58,8 @@ def main(argumentos: list[str] | None = None) -> None:
           f"{conferencia.maior_diferenca:.2e}")
     print(f"Dentro da tolerância de {conferencia.tolerancia:.0e}: "
           f"{'sim' if conferencia.aprovada else 'não'}")
-    print(f"Tempo por avaliação neste computador: {resultado.segundos_por_avaliacao:.2f} s")
+    print(f"Tempo por avaliação neste computador: {resultado.medicao.segundos_por_avaliacao:.2f} s")
+    print(f"Memória ocupada pela sessão: {resultado.medicao.memoria_mb:.0f} MB")
 
 
 if __name__ == "__main__":

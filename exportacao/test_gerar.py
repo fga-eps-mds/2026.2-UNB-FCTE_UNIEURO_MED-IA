@@ -12,14 +12,15 @@ def modelo_pequeno_como_treinado(monkeypatch, modelo, lado):
     monkeypatch.setattr(gerar, "LADO", lado)
 
 
-def test_mede_parametros_tamanho_escore_e_tempo(modelo, lado, tmp_path):
+def test_mede_parametros_tamanho_escore_tempo_e_memoria(modelo, lado, tmp_path):
     resultado = gerar.gerar(modelo, tmp_path / "modelo.onnx", amostras_aleatorias(3, lado), lado)
 
     assert resultado.parametros == sum(parametro.numel() for parametro in modelo.parameters())
     assert resultado.tamanho_mb == (tmp_path / "modelo.onnx").stat().st_size / 1e6
     assert resultado.conferencia.amostras == 3
     assert resultado.conferencia.aprovada
-    assert resultado.segundos_por_avaliacao > 0
+    assert resultado.medicao.segundos_por_avaliacao > 0
+    assert resultado.medicao.memoria_mb >= 0
 
 
 def test_main_exporta_e_confere_com_amostras_aleatorias(
@@ -33,6 +34,7 @@ def test_main_exporta_e_confere_com_amostras_aleatorias(
     assert destino.exists()
     assert "Maior diferença de escore em 2 amostras" in saida
     assert "Dentro da tolerância de 1e-04: sim" in saida
+    assert "Memória ocupada pela sessão" in saida
 
 
 def test_main_confere_com_os_desenhos_da_pasta(modelo_pequeno_como_treinado, capsys, tmp_path):
