@@ -1,9 +1,8 @@
 # Exportação do modelo para o tablet
 
 Proposta de formato de exportação do modelo de pontuação e registro da exportação
-feita para a issue #6. O formato ainda precisa do aceite do time do aplicativo, e
-parte das atividades da issue continua aberta, como descrito em
-[Situação da issue](#situação-da-issue).
+feita para a issue #6. O formato ainda precisa do aceite do time do aplicativo, e a
+situação de cada atividade da issue está em [Situação da issue](#situação-da-issue).
 
 ## Formato proposto
 
@@ -102,11 +101,18 @@ conjunto de dados. Sem essa opção a conferência usa imagens aleatórias.
 | Parâmetros | 46.126.658 |
 | Tamanho do arquivo `.onnx` | 185,2 MB |
 | Maior diferença de escore em 138 pacientes | 4,77 × 10⁻⁷ |
-| Tempo por avaliação no computador | 0,52 s |
+| Tempo por avaliação no computador | 0,74 s |
+| Memória ocupada pela sessão do ONNX Runtime no computador | 333 MB |
 
 **Fonte:** [Artur Mendonça Arruda](https://github.com/ArtyMend07), 2026. Computador
 com processador Intel Core i7-1165G7 e 8 GB de memória, sem placa de vídeo dedicada.
 Versões: PyTorch 2.14.1, ONNX 1.23.2, ONNX Runtime 1.31.0, operadores ONNX na versão 20.
+Medição de 22/10/2026. A medição de 12/10/2026 deu 0,52 s por avaliação no mesmo
+computador.
+
+A memória é o aumento da memória residente do processo entre antes de abrir a sessão e
+depois das 138 avaliações, medido com o `psutil` em
+[`exportacao/medir.py`](../exportacao/medir.py).
 
 A conferência é aprovada quando a maior diferença de escore fica em até 0,0001. O
 exemplo da arquitetura mostra a probabilidade com duas casas decimais, e essa
@@ -119,14 +125,46 @@ Limites deste resultado:
   escore pode diferir do que o treino calculava.
 - Os 138 pacientes são os primeiros da pasta do conjunto de dados, em ordem de
   nome. O conjunto de teste da semente usada no treino depende do script.
-- O tempo foi medido em um computador. Ele não substitui a medição no tablet.
+- O tempo foi medido em um computador. Ele não substitui a medição no tablet, e a
+  medição em aparelho está em [Execução em um celular Android](#execução-em-um-celular-android).
 
 Os testes automatizados de [`exportacao`](../exportacao) cobrem o modelo, a leitura
-das imagens, a exportação e a conferência com um modelo pequeno:
+das imagens, a exportação, a conferência, a medição e a preparação da página de
+conferência no aparelho com um modelo pequeno:
 
 ```bash
 uv run pytest --cov
 ```
+
+## Como reproduzir
+
+1. Instalar as dependências na raiz do repositório:
+
+   ```bash
+   uv sync
+   ```
+
+2. Baixar o `images.zip` do
+   [conjunto de dados](https://github.com/cccnlab/MCI-multiple-drawings) e extrair a
+   pasta `images`, que tem uma subpasta por paciente.
+3. Obter o arquivo de pesos `model.pt` com o responsável pelo treino registrado em
+   [resultados do modelo base](resultados-modelo-base.md). O arquivo não está neste
+   repositório.
+4. Exportar e conferir no computador, o que gera os números da Tabela 3:
+
+   ```bash
+   uv run python -m exportacao.gerar model.pt modelo.onnx --imagens images --quantidade 138
+   ```
+
+5. Conferir em um aparelho Android, o que gera os números da Tabela 5, como descrito
+   em [Execução em um celular Android](#execução-em-um-celular-android):
+
+   ```bash
+   uv run python -m exportacao.aparelho modelo.onnx --imagens images
+   ```
+
+Sem o `model.pt`, os testes automatizados e o passo 4 sem `--imagens` ainda conferem a
+exportação, com um modelo pequeno e com imagens aleatórias.
 
 ## Contrato do arquivo exportado
 
@@ -147,11 +185,86 @@ traz o que o arquivo exportado espera e devolve.
 **Fonte:** [`exportacao/exportar.py`](../exportacao/exportar.py) e
 [`exportacao/modelo.py`](../exportacao/modelo.py)
 
+## Execução em um celular Android
+
+O arquivo exportado também foi rodado no navegador de um celular Android, com o
+[`onnxruntime-web`](https://www.npmjs.com/package/onnxruntime-web) 1.30.0. O computador
+serve uma página na rede Wi-Fi local, o aparelho abre a página, baixa o modelo e dez
+avaliações do conjunto de dados, calcula o escore de cada uma e compara com o escore
+que o ONNX Runtime do computador calculou para os mesmos desenhos.
+
+```bash
+uv run python -m exportacao.aparelho modelo.onnx --imagens images
+```
+
+O comando mostra o endereço que o aparelho deve abrir. O aparelho e o computador
+precisam estar na mesma rede, e o firewall do computador precisa permitir conexões do
+Python na porta 8000. Os desenhos vão para a pasta `aparelho-teste`, que o `.gitignore`
+exclui, com os pacientes renomeados para `paciente-001`, `paciente-002` e assim por
+diante.
+
+**Tabela 5:** Execução do modelo exportado no navegador de um celular Android
+
+| Medida | Resultado |
+|--------|-----------|
+| Aparelho | Celular com Android 10 e 8 núcleos |
+| Abertura do modelo, incluindo o download pela rede local | 84,5 s |
+| Primeira avaliação | 16,94 s |
+| Tempo médio por avaliação, sem a primeira | 13,95 s |
+| Maior diferença de escore em 10 avaliações | 1,49 × 10⁻⁷ |
+
+**Fonte:** [Artur Mendonça Arruda](https://github.com/ArtyMend07), 2026. Página
+[`exportacao/aparelho/index.html`](../exportacao/aparelho/index.html), ONNX Runtime Web 1.30.0.
+Medição de 22/10/2026. Nesta medição a abertura do modelo inclui o download dos
+185,2 MB pela rede local. A página mostra o download e a abertura da sessão separados.
+
+Limites deste resultado:
+
+- O navegador executa o modelo em WebAssembly, e o aplicativo vai usar o
+  `onnxruntime-react-native`. O tempo dentro do aplicativo não foi medido.
+- A página rodou o modelo em uma única *thread*.
+- A memória no celular não foi medida.
+- O celular não é o tablet do parceiro. A medição no tablet continua pendente.
+
+## Carregamento no aplicativo
+
 Pela arquitetura, o arquivo fica em `assets/modelo` no aplicativo e é carregado pelo
-módulo `inferencia`. O `onnxruntime-react-native` abre o modelo a partir de um
-caminho de arquivo, com `InferenceSession.create`, e a documentação lista o
-carregamento do conteúdo em memória como não suportado. O passo a passo dentro do
-aplicativo só pode ser escrito depois do teste com o Expo SDK 57.
+módulo `inferencia`. O passo a passo abaixo segue o
+[README do `onnxruntime-react-native`](https://www.npmjs.com/package/onnxruntime-react-native)
+e o contrato da Tabela 4, e ainda não foi executado no aplicativo.
+
+1. Instalar a biblioteca:
+
+   ```bash
+   npm install onnxruntime-react-native
+   ```
+
+2. Copiar o `modelo.onnx` gerado por `exportacao.gerar` para `assets/modelo`.
+
+3. Abrir a sessão com `InferenceSession.create`, a partir do caminho do arquivo no
+   aparelho. O README informa que o carregamento a partir de um `ArrayBuffer` não é
+   suportado:
+
+   ```ts
+   import { InferenceSession } from "onnxruntime-react-native";
+
+   const sessao = await InferenceSession.create(caminhoDoModelo);
+   ```
+
+4. Converter cada desenho em um `Float32Array` de 3 × 256 × 256 com os canais
+   separados, primeiro todo o vermelho, depois o verde e depois o azul, cada pixel
+   dividido por 255. É a conversão da função `lerDesenho` da página de conferência,
+   que deu os mesmos escores do computador na Tabela 5.
+
+5. Rodar `sessao.run` com as entradas `relogio`, `cubo` e `trilhas`, no formato da
+   Tabela 4, e ler a saída `probabilidade_ccl`.
+
+6. Conferir no aparelho com os mesmos desenhos da página de conferência. O escore de cada
+   avaliação deve ficar a até 0,0001 do escore do computador gravado em
+   `aparelho-teste/referencia.json`.
+
+O relato aberto sobre o *config plugin* com `npx expo prebuild`, citado em
+[Formato proposto](#formato-proposto), é o primeiro ponto a observar no passo 1.
 
 ## Pontos que precisam de decisão
 
@@ -179,13 +292,14 @@ resolvido pela exportação.
 
 | Atividade ou critério | Situação |
 |-----------------------|----------|
-| Escolher o formato de exportação junto com o time do aplicativo | Proposta feita neste documento. Falta o teste no aplicativo e o aceite do time |
-| Conferir que o modelo exportado dá os mesmos escores que o original | Feita com o modelo treinado em 138 pacientes. Falta confirmar no script de treino os dois itens da Tabela 2 |
-| Medir o tempo de cálculo e o uso de memória no tablet do parceiro | Depende do tablet |
-| Instruções de como o aplicativo carrega o modelo | Contrato do arquivo registrado na Tabela 4. O passo a passo depende do teste no aplicativo |
+| Escolher o formato de exportação junto com o time do aplicativo | ONNX com ONNX Runtime, proposto neste documento. Falta o aceite do time do aplicativo |
+| Conferir que o modelo exportado dá os mesmos escores que o original | Feita com o modelo treinado em 138 pacientes no computador (Tabela 3) e em 10 no celular (Tabela 5). Os dois itens a confirmar da Tabela 2 dependem do script de treino |
+| Medir o tempo de cálculo e o uso de memória no tablet do parceiro | Tempo e memória medidos no computador (Tabela 3) e tempo medido em um celular Android (Tabela 5). A medição no tablet continua pendente |
+| Instruções de como o aplicativo carrega o modelo | Contrato na Tabela 4 e passo a passo em [Carregamento no aplicativo](#carregamento-no-aplicativo) |
 
 ## Histórico de Versões
 
 | Versão | Descrição | Autor(es) | Data | Revisor(es) | Data de Revisão |
 |---|---|---|---|---|---|
 | 1.0 | Proposta de formato de exportação e registro da exportação do modelo treinado | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 12/10/2026 | A definir | A definir |
+| 1.1 | Medição de memória no computador, execução em celular Android, passo a passo de carregamento no aplicativo e instruções de reprodução | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 22/10/2026 | A definir | A definir |
