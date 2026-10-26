@@ -1,0 +1,40 @@
+[project]
+name = "med-ia"
+version = "0.0.0"
+description = "Modelo de pontuação dos testes de desenho do MED"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.4",
+    "onnx>=1.23",
+    "onnxruntime>=1.31",
+    "onnxscript>=0.7",
+    "pillow>=12.3",
+    "psutil>=7",
+    "torch>=2.14",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "pytest-cov>=7.1",
+]
+
+[tool.uv]
+package = false
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", "metrics/*"]
+relative_files = true
