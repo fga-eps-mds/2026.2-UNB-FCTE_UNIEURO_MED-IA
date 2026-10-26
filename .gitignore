@@ -1,0 +1,15 @@
+# Ambiente e saídas locais do Python
+.venv/
+__pycache__/
+.pytest_cache/
+.coverage
+coverage.xml
+
+# Modelo exportado e pesos: derivam do conjunto de dados e não são versionados
+*.onnx
+*.onnx.data
+*.pt
+*.pth
+
+# Pasta montada por exportacao.aparelho, com desenhos do conjunto de dados
+/aparelho-teste/

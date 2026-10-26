@@ -42,9 +42,21 @@ chore(deps): fixa versão da biblioteca de exportação do modelo
 
 Commits atômicos: uma alteração lógica por commit.
 
+## Ambiente e dependências
+
+As dependências são gerenciadas com o [uv](https://docs.astral.sh/uv/). O `pyproject.toml` declara as dependências e o `uv.lock` registra as versões exatas, e os dois são versionados juntos.
+
+```bash
+uv sync
+```
+
+- Para adicionar ou atualizar uma dependência, use `uv add` ou `uv lock --upgrade-package`, e inclua o `uv.lock` no mesmo commit.
+- O pipeline instala com `uv sync --locked` e reprova o PR se o `uv.lock` estiver desatualizado.
+- Não adicione `requirements.txt` nem instale pacote só no ambiente local.
+
 ## Antes de abrir o Pull Request
 
-Confirme localmente que os testes passam. Resultado de modelo só conta como resultado se puder ser reproduzido: registre no PR a versão dos dados, os parâmetros e as métricas obtidas. O registro dos experimentos em ferramenta de rastreamento será definido quando ela for configurada no repositório.
+Confirme localmente que os testes passam, com `uv run pytest --cov`. Os testes ficam na pasta `tests`, separados do código, em arquivos `test_*.py`. Resultado de modelo só conta como resultado se puder ser reproduzido: registre no PR a versão dos dados, os parâmetros e as métricas obtidas. O registro dos experimentos em ferramenta de rastreamento será definido quando ela for configurada no repositório.
 
 ## Pull Requests
 
@@ -77,3 +89,4 @@ O modelo roda embarcado no aplicativo Android, sem internet. Alterações que de
 | Versão | Descrição | Autor(es) | Data | Revisor(es) | Data de Revisão |
 |---|---|---|---|---|---|
 | 1.0 | Criação do Guia de Contribuição do repositório de IA | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 19/09/2026 | [Lucas Mendonça Arruda](https://github.com/lucasarruda9), [Gabriel Lopes de Amorim](https://github.com/BrzGab) | 21/09/2026 |
+| 1.1 | Inclusão do uv como gerenciador de dependências e do comando de testes | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 09/10/2026 | A definir | A definir |
