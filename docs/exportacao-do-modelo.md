@@ -191,7 +191,10 @@ O comando do passo 5 de [Como reproduzir](#como-reproduzir) mostra o endereço q
 precisam estar na mesma rede, e o firewall do computador precisa permitir conexões do
 Python na porta 8000. Os desenhos vão para a pasta `aparelho-teste`, que o `.gitignore`
 exclui, com os pacientes renomeados para `paciente-001`, `paciente-002` e assim por
-diante.
+diante. Como tudo o que estiver nessa pasta fica acessível a qualquer aparelho da rede, a
+opção `--pasta` só aceita uma subpasta do diretório em que o comando roda. A página confere
+o `onnxruntime-web` baixado do CDN pelo atributo `integrity`, e o navegador recusa o script
+se o arquivo publicado mudar.
 
 **Tabela 5:** Execução do modelo exportado no navegador de um celular Android
 
@@ -292,3 +295,4 @@ resolvido pela exportação.
 | 1.0 | Proposta de formato de exportação e registro da exportação do modelo treinado | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 12/10/2026 | A definir | A definir |
 | 1.1 | Medição de memória no computador, execução em celular Android, passo a passo de carregamento no aplicativo e instruções de reprodução | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 22/10/2026 | A definir | A definir |
 | 1.2 | Testes na pasta `tests`, atualização dos pontos de decisão conforme a Ata 09, comandos concentrados em Como reproduzir e registro do aceite do formato | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 22/10/2026 | A definir | A definir |
+| 1.3 | Restrição da pasta servida na rede e conferência de integridade do `onnxruntime-web` na página de conferência | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 28/10/2026 | A definir | A definir |
