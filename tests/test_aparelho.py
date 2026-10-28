@@ -56,13 +56,35 @@ def test_nao_leva_o_identificador_do_paciente_para_a_pagina(onnx_pequeno, pasta_
 def test_main_prepara_e_serve_na_porta_informada(onnx_pequeno, pasta_de_imagens, monkeypatch, tmp_path):
     servidos = []
     monkeypatch.setattr(aparelho, "servir", lambda pasta, porta: servidos.append((pasta, porta)))
-    destino = tmp_path / "aparelho"
+    monkeypatch.chdir(tmp_path)
+    destino = tmp_path.resolve() / "aparelho"
 
-    aparelho.main([str(onnx_pequeno), "--imagens", str(pasta_de_imagens), "--pasta", str(destino),
+    aparelho.main([str(onnx_pequeno), "--imagens", str(pasta_de_imagens), "--pasta", "aparelho",
                   "--porta", "8123"])
 
     assert servidos == [(destino, 8123)]
     assert (destino / "referencia.json").exists()
+
+
+@pytest.mark.parametrize("pasta", [".", "..", "../fora"])
+def test_main_recusa_pasta_que_exporia_arquivos_fora_da_subpasta(onnx_pequeno, pasta_de_imagens, monkeypatch,
+                                                                  tmp_path, pasta):
+    servidos = []
+    monkeypatch.setattr(aparelho, "servir", lambda servida, porta: servidos.append((servida, porta)))
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValueError, match="precisa ficar dentro"):
+        aparelho.main([str(onnx_pequeno), "--imagens", str(pasta_de_imagens), "--pasta", pasta])
+
+    assert servidos == []
+    assert not (tmp_path / "index.html").exists()
+    assert not (tmp_path.parent / "fora").exists()
+
+
+def test_aceita_subpasta_do_diretorio_atual_por_caminho_absoluto(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    assert aparelho.pasta_servida(tmp_path / "a" / ".." / "b") == tmp_path.resolve() / "b"
 
 
 def test_servidor_entrega_os_arquivos_preparados(onnx_pequeno, pasta_de_imagens, tmp_path):
