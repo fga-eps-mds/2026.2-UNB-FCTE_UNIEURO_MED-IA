@@ -11,8 +11,8 @@
   h1 { font-size: 1.3rem; margin: 0 0 12px; }
   button { font: inherit; padding: 12px 20px; border-radius: 8px; border: 1px solid var(--borda); width: 100%; }
   table { border-collapse: collapse; width: 100%; margin-top: 16px; }
-  td { border-bottom: 1px solid var(--borda); padding: 6px 4px; vertical-align: top; }
-  td:first-child { width: 55%; }
+  th, td { border-bottom: 1px solid var(--borda); padding: 6px 4px; vertical-align: top; }
+  th { width: 55%; text-align: left; font-weight: normal; }
   .ok { color: var(--ok); } .erro { color: var(--erro); }
   #progresso { margin-top: 12px; min-height: 1.5em; }
 </style>
@@ -23,17 +23,19 @@
 <div id="progresso"></div>
 <table id="resultado" hidden>
   <tbody>
-    <tr><td>Avaliações</td><td id="avaliacoes"></td></tr>
-    <tr><td>Download do modelo pela rede</td><td id="download"></td></tr>
-    <tr><td>Abertura da sessão</td><td id="abertura"></td></tr>
-    <tr><td>Primeira avaliação</td><td id="primeira"></td></tr>
-    <tr><td>Tempo médio por avaliação, sem a primeira</td><td id="media"></td></tr>
-    <tr><td>Tempo por avaliação no computador</td><td id="computador"></td></tr>
-    <tr><td>Maior diferença de escore para o computador</td><td id="diferenca"></td></tr>
-    <tr><td>Aparelho</td><td id="aparelho"></td></tr>
+    <tr><th scope="row">Avaliações</th><td id="avaliacoes"></td></tr>
+    <tr><th scope="row">Download do modelo pela rede</th><td id="download"></td></tr>
+    <tr><th scope="row">Abertura da sessão</th><td id="abertura"></td></tr>
+    <tr><th scope="row">Primeira avaliação</th><td id="primeira"></td></tr>
+    <tr><th scope="row">Tempo médio por avaliação, sem a primeira</th><td id="media"></td></tr>
+    <tr><th scope="row">Tempo por avaliação no computador</th><td id="computador"></td></tr>
+    <tr><th scope="row">Maior diferença de escore para o computador</th><td id="diferenca"></td></tr>
+    <tr><th scope="row">Aparelho</th><td id="aparelho"></td></tr>
   </tbody>
 </table>
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.wasm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.wasm.min.js"
+        integrity="sha384-Bw6URI+Gvoadw0do7/QrSHUC9D1vCYYK5OSqChFyhyV5mzPL4oe2rOAFljAnS8Sq"
+        crossorigin="anonymous"></script>
 <script>
 function descreverAparelho() {
   const sistema = navigator.userAgent.match(/Android [\d.]+/) || navigator.userAgent.match(/Windows NT [\d.]+/);
