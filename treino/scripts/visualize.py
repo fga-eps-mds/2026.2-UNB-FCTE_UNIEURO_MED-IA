@@ -3,7 +3,7 @@
 model: original drawing + attention-rollout heat map, for each of the 3 tasks.
 
 Usage:
-    python scripts/visualize.py --config configs/original.yaml --seed 0 --patient_id 4260692764019076784
+    python scripts/visualize.py --config configs/original.yaml --seed 0 --patient_id <id_do_paciente>
     python scripts/visualize.py --config configs/original.yaml --seed 0 --pick mci   # random MCI test case
 """
 from __future__ import annotations

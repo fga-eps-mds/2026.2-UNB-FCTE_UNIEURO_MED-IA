@@ -1,7 +1,7 @@
 # Reproducing the paper: training guide
 
 Reproduction of [An Explainable Self-Attention Deep Neural Network for Detecting Mild
-Cognitive Impairment Using Multi-input Digital Drawing Tasks](2021.12.15.472738v1.full.pdf)
+Cognitive Impairment Using Multi-input Digital Drawing Tasks](https://www.biorxiv.org/content/10.1101/2021.12.15.472738v1.full.pdf)
 (bioRxiv 2021.12.15.472738v1) — specifically the proposed **multi-input Conv-Att model
 with soft label** (Table 1, last row; Figure 2).
 
