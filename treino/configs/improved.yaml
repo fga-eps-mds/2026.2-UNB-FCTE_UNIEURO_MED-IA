@@ -1,0 +1,54 @@
+# Same task/architecture family as configs/original.yaml, with additions that are NOT
+# part of the published pipeline. Each change is justified in IMPROVEMENTS.md — read
+# that file before assuming this config is strictly "better"; it is a documented,
+# reasonable set of bets, not a guaranteed win, and should be compared against
+# configs/original.yaml on the same 5 splits.
+experiment_name: improved
+
+seed_list: [0, 1, 2, 3, 4]
+
+data:
+  images_dir: data/images
+  label_csv: label.csv
+  moca_cutoff: 25
+  soft_label_center: 24.5
+  train_frac: 0.70
+  val_frac: 0.15
+  test_frac: 0.15
+  tasks: [clock, copy, trail]
+  num_workers: 4
+
+model:
+  type: multi_input_conv_att
+  hidden_dim: 128
+  num_layers: 3
+  num_heads: 4            # IMPROVEMENTS.md #6 (was 1 in the paper)
+  ff_dim: 512
+  dropout: 0.1
+  pretrained_backbone: true
+  train_backbone: true
+  use_pos_embed: true      # IMPROVEMENTS.md #5
+
+label_mode: soft
+
+training:
+  epochs: 100
+  batch_size: 64
+  micro_batch_size: 16     # see configs/original.yaml note: avoids VRAM spillover on 8GB GPUs
+  optimizer: adamw         # IMPROVEMENTS.md #3
+  lr: 3.0e-5
+  betas: [0.9, 0.99]
+  eps: 1.0e-7
+  weight_decay: 0.01       # IMPROVEMENTS.md #3
+  lr_schedule: cosine_warmup  # IMPROVEMENTS.md #3
+  warmup_epochs: 5
+  model_selection: best_val_auc  # IMPROVEMENTS.md #2
+  class_balanced_sampling: true  # IMPROVEMENTS.md #1
+  amp: true
+
+augmentation:
+  pad: 12
+  crop_size: 256
+  extra: mild_affine       # IMPROVEMENTS.md #4 (rotation/translate/scale only — no flips)
+
+output_dir: outputs/improved
