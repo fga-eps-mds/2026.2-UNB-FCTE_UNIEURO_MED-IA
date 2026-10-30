@@ -5,7 +5,8 @@ import torch.nn.functional as F
 from torch import nn
 
 LADO = 256
-VGG16 = (64, 64, "M", 128, 128, "M", 256, 256, 256, "M", 512, 512, 512, "M", 512, 512, 512)
+# O último pooling vem do treino (`vgg16().features`). O arquivo de pesos não o registra, porque ele não tem parâmetros.
+VGG16 = (64, 64, "M", 128, 128, "M", 256, 256, 256, "M", 512, 512, 512, "M", 512, 512, 512, "M")
 MEDIA_IMAGENET = (0.485, 0.456, 0.406)
 DESVIO_IMAGENET = (0.229, 0.224, 0.225)
 
