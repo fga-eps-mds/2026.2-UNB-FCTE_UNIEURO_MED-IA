@@ -162,8 +162,9 @@ uv run pytest --cov
    uv run python -m exportacao.aparelho modelo.onnx --imagens images
    ```
 
-6. Comparar o modelo do treino com a reconstrução, o que gera os números da Tabela 6. O
-   `label.csv` vem do mesmo conjunto de dados:
+6. Comparar o modelo do treino com a reconstrução, com e sem o último *pooling*, o que gera os
+   números da Tabela 6 e os da Tabela 7, menos os tempos. O `label.csv` vem do mesmo conjunto de
+   dados:
 
    ```bash
    uv run --with scikit-learn==1.7.2 --with pandas --with opencv-python-headless --with pyyaml --with torchvision python treino/scripts/conferir_reconstrucao.py model.pt --imagens images --rotulos label.csv --semente 1
@@ -272,8 +273,9 @@ Tabela 7 mostra o efeito do erro. Nesse conjunto, as métricas sem o *pooling* f
 | Diferença de escore para o treino, média e maior | 0 | 0,051 e 0,209 |
 | Pacientes que mudam de classe | 0 | 7 de 138 |
 
-**Fonte:** [Artur Mendonça Arruda](https://github.com/ArtyMend07), 2026. Tempos medidos em sequência no
-computador da Tabela 3, em 138 pacientes do início da pasta. Medição de 30/10/2026.
+**Fonte:** [Artur Mendonça Arruda](https://github.com/ArtyMend07), 2026. O passo 6 de
+[Como reproduzir](#como-reproduzir) gera as métricas, a diferença de escore e a mudança de classe. Tempos medidos em
+sequência no computador da Tabela 3, em 138 pacientes do início da pasta. Medição de 30/10/2026.
 
 O arquivo mantém o *pooling* mesmo com as métricas menores, por três motivos:
 
@@ -416,3 +418,4 @@ resolvido pela exportação.
 | 1.2 | Testes na pasta `tests`, atualização dos pontos de decisão conforme a Ata 09, comandos concentrados em Como reproduzir e registro do aceite do formato | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 22/10/2026 | A definir | A definir |
 | 1.3 | Restrição da pasta servida na rede e conferência de integridade do `onnxruntime-web` na página de conferência | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 28/10/2026 | A definir | A definir |
 | 1.4 | Correção do último *pooling* da VGG16, conferência com o código de treino e efeito do preparo da imagem do aplicativo | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 30/10/2026 | A definir | A definir |
+| 1.5 | Comparação sem o último *pooling* no script de conferência, para reproduzir a Tabela 7 | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 01/11/2026 | A definir | A definir |
