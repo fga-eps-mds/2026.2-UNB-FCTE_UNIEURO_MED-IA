@@ -58,6 +58,11 @@ python scripts/localizar_pesos.py caminho/model.pt
 
 O `result.json` de cada semente também traz o `mlflow_run_id`.
 
+O `history.json` é gravado a cada época, então um treino que cai no meio mantém as épocas já feitas. Se o
+MLflow não receber alguma época, o treino avisa e continua, e no fim da semente as épocas que faltam são enviadas
+de novo a partir do `history.json`. Se ainda faltar alguma, o registro termina como `FAILED`, nunca como
+concluído com buraco.
+
 Treinos feitos antes do MLflow entram a partir de `outputs/<experimento>/seed_<n>`. O script recusa pesos já
 registrados e arquivos faltando. O commit desses treinos fica como `desconhecido`, e a configuração e o hash dos
 dados são os da hora do registro, por isso o `label.csv` e a configuração precisam ser os usados no treino.

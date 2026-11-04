@@ -63,6 +63,10 @@ def finished_run(run_id: str):
     return MlflowClient().get_run(run_id)
 
 
+def fail_to_log(*_args, **_kwargs):
+    raise MlflowException("banco indisponível")
+
+
 def artifact_paths(run_id: str, folder: str | None = None) -> set[str]:
     found = set()
     for artifact in MlflowClient().list_artifacts(run_id, folder):
@@ -178,24 +182,53 @@ def test_failure_during_training_marks_the_run_as_failed(cfg):
 
 
 def test_tracker_failure_on_an_epoch_warns_and_lets_training_continue(cfg, monkeypatch):
-    def fail(*_args, **_kwargs):
-        raise MlflowException("banco indisponível")
-
     with tracking.seed_run(cfg, seed=0):
-        monkeypatch.setattr(mlflow, "log_metrics", fail)
+        monkeypatch.setattr(mlflow, "log_metrics", fail_to_log)
         with pytest.warns(UserWarning, match="Época 0 sem registro"):
             tracking.log_epoch(HISTORY[0])
 
 
 def test_tracker_failure_on_the_result_stops_with_an_error(cfg, tmp_path, monkeypatch):
-    def fail(*_args, **_kwargs):
-        raise MlflowException("banco indisponível")
-
     save_dir = write_training_files(tmp_path / "seed_1", weights=b"erro")
     with pytest.raises(MlflowException):
         with tracking.seed_run(cfg, seed=0):
-            monkeypatch.setattr(mlflow, "log_metrics", fail)
+            monkeypatch.setattr(mlflow, "log_metrics", fail_to_log)
             tracking.log_result(RESULT, save_dir)
+
+
+def test_epoch_missed_during_training_is_completed_from_the_history_at_the_end(cfg, tmp_path, monkeypatch):
+    save_dir = write_training_files(tmp_path / "seed_1", weights=b"completa")
+    with tracking.seed_run(cfg, seed=1):
+        run_id = tracking.current_run_id()
+        with monkeypatch.context() as patch:
+            patch.setattr(mlflow, "log_metrics", fail_to_log)
+            with pytest.warns(UserWarning, match="Época 0 sem registro"):
+                tracking.log_epoch(HISTORY[0])
+        tracking.log_epoch(HISTORY[1])
+        tracking.log_result(RESULT, save_dir)
+
+    series = MlflowClient().get_metric_history(run_id, "train_loss")
+    assert sorted((point.step, point.value) for point in series) == [(0, 0.9), (1, 0.7)]
+    assert finished_run(run_id).info.status == "FINISHED"
+
+
+def test_epoch_still_missing_at_the_end_marks_the_run_as_failed(cfg, tmp_path, monkeypatch):
+    log_metrics = mlflow.log_metrics
+
+    def fail_only_on_the_first_epoch(metrics, step=None, **kwargs):
+        if step == HISTORY[0]["epoch"]:
+            fail_to_log()
+        log_metrics(metrics, step=step, **kwargs)
+
+    save_dir = write_training_files(tmp_path / "seed_1", weights=b"buraco")
+    with pytest.raises(MlflowException), tracking.seed_run(cfg, seed=1):
+        run_id = tracking.current_run_id()
+        monkeypatch.setattr(mlflow, "log_metrics", fail_only_on_the_first_epoch)
+        with pytest.warns(UserWarning, match="Época 0 sem registro"):
+            tracking.log_epoch(HISTORY[0])
+        tracking.log_result(RESULT, save_dir)
+
+    assert finished_run(run_id).info.status == "FAILED"
 
 
 def test_nothing_is_recorded_without_an_open_run(cfg, tmp_path):
@@ -250,6 +283,31 @@ def test_training_records_no_patient_identifier(cfg, tmp_path, monkeypatch):
     texts = [path.read_text() for path in downloaded.rglob("*") if path.is_file() and path.suffix != ".pt"]
     assert "p001" not in records
     assert not [text for text in texts if "p001" in text]
+
+
+def test_history_keeps_the_finished_epochs_when_training_stops_midway(cfg, tmp_path, monkeypatch):
+    write_fake_dataset(tmp_path)
+    monkeypatch.setattr(run_module, "build_model", lambda _cfg: TinyModel())
+    train_one_epoch = run_module.train_one_epoch
+    finished_epochs = 2
+    calls = []
+
+    def stop_after_the_finished_epochs(*args, **kwargs):
+        calls.append(args)
+        if len(calls) > finished_epochs:
+            raise RuntimeError("queda no meio do treino")
+        return train_one_epoch(*args, **kwargs)
+
+    monkeypatch.setattr(run_module, "train_one_epoch", stop_after_the_finished_epochs)
+    config = training_cfg(cfg)
+    config["training"]["epochs"] = finished_epochs + 1
+
+    with pytest.raises(RuntimeError, match="queda no meio do treino"):
+        run_single_split(config, 0, tmp_path / "saida")
+
+    history = json.loads((tmp_path / "saida" / "history.json").read_text())
+    assert [entry["epoch"] for entry in history] == list(range(finished_epochs))
+    assert not (tmp_path / "saida" / "history.json.tmp").exists()
 
 
 def test_smoke_test_path_opens_no_run(cfg, tmp_path, monkeypatch):

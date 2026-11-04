@@ -42,10 +42,8 @@ def registrar(cfg: dict, pasta: Path, sementes: list[int]) -> None:
         for semente in sementes:
             pasta_da_semente = pasta / f"seed_{semente}"
             resultado = json.loads((pasta_da_semente / "result.json").read_text())
-            historico = json.loads((pasta_da_semente / "history.json").read_text())
             with tracking.seed_run(cfg, semente, imported=True):
-                for epoca in historico:
-                    tracking.log_epoch(epoca)
+                # As épocas entram pelo history.json dentro de log_result, como no fim de um treino.
                 tracking.log_result(resultado, pasta_da_semente, cfg.get("tracking", {}).get("log_weights", True))
             metricas_por_semente.append(resultado["test_metrics"])
         tracking.log_summary(metricas_por_semente)

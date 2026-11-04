@@ -119,6 +119,9 @@ def run_single_split(cfg: dict, seed: int, save_dir: str | Path, quiet: bool = F
             scheduler.step()
         dt = time.time() - t0
         history.append({"epoch": epoch, "train_loss": train_loss, "lr": epoch_lr, "epoch_seconds": dt, **{f"val_{k}": v for k, v in val_metrics.items()}})
+        # Gravado a cada época para o histórico sobreviver a uma queda no meio do treino. No fim, é dele
+        # que o registro completa as épocas que o MLflow não recebeu.
+        save_json(history, save_dir / "history.json")
         tracking.log_epoch(history[-1])
         if not quiet:
             print(
@@ -137,7 +140,6 @@ def run_single_split(cfg: dict, seed: int, save_dir: str | Path, quiet: bool = F
     test_metrics, test_probs, test_hard = evaluate(model, test_loader, device, label_mode)
 
     torch.save(model.state_dict(), save_dir / "model.pt")
-    save_json(history, save_dir / "history.json")
     result = {
         "seed": seed,
         "mlflow_run_id": tracking.current_run_id(),

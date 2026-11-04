@@ -7,6 +7,7 @@ que podem guardar amostras da entrada.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import platform
 import subprocess
@@ -151,20 +152,45 @@ def log_device(device_name: str) -> None:
     mlflow.set_tag("device", device_name)
 
 
+def _epoch_metrics(history_entry: dict[str, float]) -> dict[str, float]:
+    return {name: value for name, value in history_entry.items() if name != "epoch"}
+
+
 @_only_inside_run
 def log_epoch(history_entry: dict[str, float]) -> None:
-    metrics = {name: value for name, value in history_entry.items() if name != "epoch"}
     try:
-        mlflow.log_metrics(metrics, step=history_entry["epoch"])
+        mlflow.log_metrics(_epoch_metrics(history_entry), step=history_entry["epoch"])
     except MlflowException as error:
-        # A série também fica no history.json, então uma falha aqui não justifica perder o treino.
+        # A série também fica no history.json e é completada em log_result, então uma falha aqui não
+        # justifica perder o treino.
         warnings.warn(f"Época {history_entry['epoch']} sem registro no MLflow: {error}", stacklevel=2)
+
+
+def _missing_epoch_metrics(run_id: str, history: list[dict[str, float]]) -> list[tuple[int, dict[str, float]]]:
+    client = MlflowClient()
+    names = {name for entry in history for name in _epoch_metrics(entry)}
+    recorded_steps = {name: {point.step for point in client.get_metric_history(run_id, name)} for name in names}
+    missing = []
+    for entry in history:
+        pending = {name: value for name, value in _epoch_metrics(entry).items() if entry["epoch"] not in recorded_steps[name]}
+        if pending:
+            missing.append((entry["epoch"], pending))
+    return missing
+
+
+def _complete_epochs(history_file: Path) -> None:
+    history = json.loads(history_file.read_text())
+    # Sem tratar o erro de propósito: se uma época ainda não entrar, o registro termina como FAILED
+    # em vez de aparecer concluído com um buraco na série.
+    for epoch, metrics in _missing_epoch_metrics(current_run_id(), history):
+        mlflow.log_metrics(metrics, step=epoch)
 
 
 @_only_inside_run
 def log_result(result: dict[str, Any], save_dir: str | Path, log_weights: bool = True) -> None:
     save_dir = Path(save_dir)
     weights = save_dir / "model.pt"
+    _complete_epochs(save_dir / "history.json")
     mlflow.log_metrics({f"test_{name}": value for name, value in result["test_metrics"].items()})
     mlflow.log_params({name: value for name, value in result.items() if name.startswith("n_")})
     mlflow.set_tag(WEIGHTS_HASH_TAG, file_sha256(weights))

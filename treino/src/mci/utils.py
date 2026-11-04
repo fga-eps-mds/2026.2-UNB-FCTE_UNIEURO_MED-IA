@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 from pathlib import Path
 from typing import Any
@@ -26,9 +27,14 @@ def load_config(path: str | Path) -> dict[str, Any]:
 
 
 def save_json(obj: Any, path: str | Path) -> None:
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # O history.json é regravado a cada época. Escrever num temporário e trocar de uma vez evita que
+    # uma queda no meio da escrita deixe o arquivo quebrado e leve junto as épocas anteriores.
+    partial = path.with_name(f"{path.name}.tmp")
+    with open(partial, "w") as f:
         json.dump(obj, f, indent=2, default=float)
+    os.replace(partial, path)
 
 
 def get_device() -> torch.device:
