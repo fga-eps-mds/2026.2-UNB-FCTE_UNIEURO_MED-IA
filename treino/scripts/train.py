@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from mci import tracking
 from mci.run import run_single_split
 from mci.utils import load_config
 
@@ -21,7 +22,8 @@ def main():
 
     cfg = load_config(args.config)
     save_dir = Path(cfg["output_dir"]) / f"seed_{args.seed}"
-    metrics = run_single_split(cfg, args.seed, save_dir)
+    with tracking.seed_run(cfg, args.seed):
+        metrics = run_single_split(cfg, args.seed, save_dir)
     print(f"\nTest metrics (seed={args.seed}): {metrics}")
 
 

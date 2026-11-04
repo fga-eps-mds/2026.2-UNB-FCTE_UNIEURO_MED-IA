@@ -10,6 +10,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
+from . import tracking
 from .dataset import MCIDataset, build_transforms, collate_fn, load_records, make_splits
 from .engine import evaluate, train_one_epoch
 from .model import build_model
@@ -63,6 +64,7 @@ def run_single_split(cfg: dict, seed: int, save_dir: str | Path, quiet: bool = F
     save_dir.mkdir(parents=True, exist_ok=True)
     set_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tracking.log_device(torch.cuda.get_device_name(device) if device.type == "cuda" else "cpu")
 
     dcfg, tcfg, acfg = cfg["data"], cfg["training"], cfg["augmentation"]
     label_mode = cfg.get("label_mode", "soft")
@@ -112,10 +114,12 @@ def run_single_split(cfg: dict, seed: int, save_dir: str | Path, quiet: bool = F
             scaler if scaler.is_enabled() else None, grad_accum_steps,
         )
         val_metrics, _, _ = evaluate(model, val_loader, device, label_mode)
+        epoch_lr = optimizer.param_groups[0]["lr"]
         if scheduler is not None:
             scheduler.step()
         dt = time.time() - t0
-        history.append({"epoch": epoch, "train_loss": train_loss, "epoch_seconds": dt, **{f"val_{k}": v for k, v in val_metrics.items()}})
+        history.append({"epoch": epoch, "train_loss": train_loss, "lr": epoch_lr, "epoch_seconds": dt, **{f"val_{k}": v for k, v in val_metrics.items()}})
+        tracking.log_epoch(history[-1])
         if not quiet:
             print(
                 f"[seed {seed}] epoch {epoch + 1:3d}/{tcfg['epochs']} "
@@ -134,16 +138,17 @@ def run_single_split(cfg: dict, seed: int, save_dir: str | Path, quiet: bool = F
 
     torch.save(model.state_dict(), save_dir / "model.pt")
     save_json(history, save_dir / "history.json")
-    save_json(
-        {
-            "seed": seed,
-            "n_train": len(train_recs),
-            "n_val": len(val_recs),
-            "n_test": len(test_recs),
-            "n_test_mci": int(sum(r.hard_label for r in test_recs)),
-            "n_test_healthy": int(sum(1 - r.hard_label for r in test_recs)),
-            "test_metrics": test_metrics,
-        },
-        save_dir / "result.json",
-    )
+    result = {
+        "seed": seed,
+        "mlflow_run_id": tracking.current_run_id(),
+        "n_train": len(train_recs),
+        "n_val": len(val_recs),
+        "n_test": len(test_recs),
+        "n_test_mci": int(sum(r.hard_label for r in test_recs)),
+        "n_test_healthy": int(sum(1 - r.hard_label for r in test_recs)),
+        "test_metrics": test_metrics,
+    }
+    save_json(result, save_dir / "result.json")
+    # Os arquivos já estão no disco: se o registro falhar aqui, registrar_treinos_existentes recupera.
+    tracking.log_result(result, save_dir, cfg.get("tracking", {}).get("log_weights", True))
     return test_metrics

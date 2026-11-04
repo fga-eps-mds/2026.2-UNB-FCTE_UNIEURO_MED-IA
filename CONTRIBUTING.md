@@ -56,7 +56,7 @@ uv sync
 
 ## Antes de abrir o Pull Request
 
-Confirme localmente que os testes passam, com `uv run pytest --cov`. Os testes ficam na pasta `tests`, separados do código, em arquivos `test_*.py`. Resultado de modelo só conta como resultado se puder ser reproduzido: registre no PR a versão dos dados, os parâmetros e as métricas obtidas. O registro dos experimentos em ferramenta de rastreamento será definido quando ela for configurada no repositório.
+Confirme localmente que os testes passam, com `uv run pytest --cov`. Os testes ficam na pasta `tests`, separados do código, em arquivos `test_*.py`. Resultado de modelo só conta como resultado se puder ser reproduzido: registre no PR a versão dos dados, os parâmetros e as métricas obtidas. Os treinos são registrados no MLflow, como explicado no [guia do treino](treino/README.md#registro-dos-treinos-no-mlflow).
 
 ## Pull Requests
 
@@ -90,3 +90,4 @@ O modelo roda embarcado no aplicativo Android, sem internet. Alterações que de
 |---|---|---|---|---|---|
 | 1.0 | Criação do Guia de Contribuição do repositório de IA | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 19/09/2026 | [Lucas Mendonça Arruda](https://github.com/lucasarruda9), [Gabriel Lopes de Amorim](https://github.com/BrzGab) | 21/09/2026 |
 | 1.1 | Inclusão do uv como gerenciador de dependências e do comando de testes | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 09/10/2026 | A definir | A definir |
+| 1.2 | Definição do MLflow como registro dos treinos | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 02/11/2026 | A definir | A definir |
