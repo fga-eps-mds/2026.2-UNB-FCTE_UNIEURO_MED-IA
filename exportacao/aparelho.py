@@ -64,6 +64,17 @@ def endereco_na_rede() -> str:
             return "127.0.0.1"
 
 
+def pasta_servida(pasta: Path) -> Path:
+    """Tudo o que estiver na pasta fica aberto a qualquer aparelho da rede, então ela precisa ser
+    uma subpasta do diretório atual, nunca o próprio diretório nem um caminho fora dele.
+    """
+    base = Path.cwd().resolve()
+    destino = pasta.resolve()
+    if destino == base or not destino.is_relative_to(base):
+        raise ValueError(f"A pasta {pasta} precisa ficar dentro de {base}.")
+    return destino
+
+
 def criar_servidor(pasta: Path, porta: int) -> ThreadingHTTPServer:
     """Servidor que entrega a pasta preparada a qualquer aparelho da rede local."""
     manipulador = functools.partial(SimpleHTTPRequestHandler, directory=str(pasta))
@@ -91,9 +102,10 @@ def main(argumentos: list[str] | None = None) -> None:
     leitor.add_argument("--porta", type=int, default=PORTA)
     opcoes = leitor.parse_args(argumentos)
 
-    referencia = preparar(opcoes.onnx, opcoes.imagens, opcoes.quantidade, opcoes.pasta)
-    print(f"{len(referencia['pacientes'])} avaliações preparadas em {opcoes.pasta}")
-    servir(opcoes.pasta, opcoes.porta)
+    pasta = pasta_servida(opcoes.pasta)
+    referencia = preparar(opcoes.onnx, opcoes.imagens, opcoes.quantidade, pasta)
+    print(f"{len(referencia['pacientes'])} avaliações preparadas em {pasta}")
+    servir(pasta, opcoes.porta)
 
 
 if __name__ == "__main__":
