@@ -12,6 +12,7 @@ import argparse
 import time
 from pathlib import Path
 
+from mci import tracking
 from mci.run import run_single_split
 from mci.utils import load_config, mean_std_table, save_json
 
@@ -28,13 +29,16 @@ def main():
     print(f"Running experiment '{cfg['experiment_name']}' over seeds {seeds}")
     all_metrics = []
     t_start = time.time()
-    for seed in seeds:
-        print(f"\n=== seed {seed} ===")
-        save_dir = Path(cfg["output_dir"]) / f"seed_{seed}"
-        t0 = time.time()
-        metrics = run_single_split(cfg, seed, save_dir)
-        print(f"seed {seed} done in {(time.time() - t0) / 60:.1f} min -> {metrics}")
-        all_metrics.append(metrics)
+    with tracking.experiment_run(cfg, seeds):
+        for seed in seeds:
+            print(f"\n=== seed {seed} ===")
+            save_dir = Path(cfg["output_dir"]) / f"seed_{seed}"
+            t0 = time.time()
+            with tracking.seed_run(cfg, seed):
+                metrics = run_single_split(cfg, seed, save_dir)
+            print(f"seed {seed} done in {(time.time() - t0) / 60:.1f} min -> {metrics}")
+            all_metrics.append(metrics)
+        tracking.log_summary(all_metrics)
 
     summary = mean_std_table(all_metrics)
     print(f"\n=== Summary over {len(seeds)} repetitions ({cfg['experiment_name']}) ===")
