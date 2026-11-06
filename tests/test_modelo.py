@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from exportacao.imagens import amostras_aleatorias
-from exportacao.modelo import ModeloBase, carregar_modelo
+from exportacao.modelo import LADO, VGG16, Extrator, ModeloBase, carregar_modelo
 
 
 def test_devolve_uma_probabilidade_por_avaliacao(modelo, lado):
@@ -18,6 +18,13 @@ def test_cada_desenho_passa_por_uma_torre_propria(modelo, lado):
     (relogio, cubo, trilhas), = amostras_aleatorias(1, lado)
 
     assert modelo(relogio, cubo, trilhas) != modelo(cubo, relogio, trilhas)
+
+
+def test_vgg16_reduz_o_desenho_de_256_para_8x8_como_no_treino():
+    with torch.no_grad():
+        caracteristicas = Extrator(VGG16)(torch.zeros(1, 3, LADO, LADO))
+
+    assert caracteristicas.shape == (1, 512, 8, 8)
 
 
 def test_parametros_tem_os_nomes_do_arquivo_de_pesos():

@@ -1,0 +1,54 @@
+# Faithful reproduction of the paper's proposed model:
+# "Multi-input Conv-Att with soft label" (Table 1, last row).
+# Every value here is taken directly from the Materials & Methods section.
+experiment_name: original
+
+seed_list: [0, 1, 2, 3, 4]   # "5 different random training-validation-test data splitting"
+
+data:
+  images_dir: data/images
+  label_csv: label.csv
+  moca_cutoff: 25
+  soft_label_center: 24.5
+  train_frac: 0.70
+  val_frac: 0.15
+  test_frac: 0.15
+  tasks: [clock, copy, trail]     # multi-input: clock drawing + cube-copying + trail-making
+  num_workers: 4
+
+model:
+  type: multi_input_conv_att
+  hidden_dim: 128        # self-attention hidden dimension D
+  num_layers: 3          # "we used 3 self-attention layers"
+  num_heads: 1           # "number of heads of one"
+  ff_dim: 512            # "hidden dimension size of the feedforward layer of 512"
+  dropout: 0.1           # not specified in the paper; standard BERT-style default
+  pretrained_backbone: true
+  train_backbone: true   # whole network fine-tuned end-to-end at lr=1e-5
+  use_pos_embed: false   # paper does not mention positional embeddings
+
+label_mode: soft          # soft label y = 1 - sigmoid(m - 24.5)
+
+training:
+  epochs: 100
+  batch_size: 64
+  micro_batch_size: 16    # measured on RTX 2060 8GB: batch=64 straight overflows VRAM and
+                           # silently spills to slow shared memory (~14s/step); 16 + grad-accum
+                           # 4x reaches the same effective batch of 64 at ~3.7GB peak and ~0.2s/step
+  optimizer: adam
+  lr: 1.0e-5
+  betas: [0.9, 0.99]
+  eps: 1.0e-7
+  weight_decay: 0.0
+  lr_schedule: none
+  model_selection: last   # paper trains for a fixed 100 epochs, no early stopping mentioned
+  class_balanced_sampling: false
+  amp: true                # mixed precision: implementation detail for the RTX 2060 (8GB),
+                            # does not change the architecture/optimizer/data — safe for "original"
+
+augmentation:
+  pad: 12                  # zero-pad 256 -> 280
+  crop_size: 256           # ... then random-crop back to 256
+  extra: none               # no extra augmentation beyond the paper's
+
+output_dir: outputs/original

@@ -93,13 +93,11 @@ atenção). Ela ficou abaixo da configuração do artigo nas três métricas:
 
 ## Limitações
 
-Este registro documenta o resultado, mas ainda **não torna o treino
-reproduzível** a partir deste repositório: o **script de treino ainda não está
-aqui**. Sem ele, não é possível reexecutar o experimento nem auditar os
-hiperparâmetros. As sementes, a divisão dos dados e o critério de escolha do
-modelo estão registrados acima.
+O código de treino está em [`treino`](../treino/README.md), com as configurações usadas. Os
+arquivos de resultado de cada semente (`summary.json` e `result.json`) não estão no repositório.
 
-Enquanto o script não for publicado, a issue #4 permanece parcialmente atendida.
+A issue #4 permanece parcialmente atendida, porque ainda faltam a incerteza e as características
+que mais influenciam cada escore.
 
 ## Artefato
 
@@ -108,13 +106,15 @@ neste repositório — o GitHub recusa arquivos acima de 100 MB. Ele será anexa
 uma *release* depois que o *Product Owner* autorizar a publicação: o repositório de
 origem dos dados não declara licença, e os pesos são derivados deles.
 
+O arquivo usado na [exportação](exportacao-do-modelo.md) é o da semente 1. Ele reproduz a linha
+dessa semente na Tabela 2, com os mesmos 138 pacientes de teste.
+
 ## Próximos passos
 
-1. Publicar o script de treino neste repositório.
-2. Treinar com as VGG16 congeladas, ajustando só a autoatenção e o classificador,
+1. Treinar com as VGG16 congeladas, ajustando só a autoatenção e o classificador,
    para atacar o sobreajuste com uma mudança isolada.
-3. Experimentar a estratégia de três canais proposta pelo *Product Owner*.
-4. Exportar o modelo para execução no Android sem internet (issue #6).
+2. Experimentar a estratégia de três canais proposta pelo *Product Owner*.
+3. Definir com o *Product Owner* qual modelo vai para o aplicativo, depois do teste da ConvNeXt V2.
 
 ## Histórico de versão
 
@@ -122,3 +122,4 @@ origem dos dados não declara licença, e os pesos são derivados deles.
 |:------:|------|-----------|-------|---------|
 | `1.0` | 20/09/2026 | Registro dos resultados do primeiro treino | [Thales Germano Vargas Lima](https://github.com/thalesgvl) | [Vitor Carvalho Pereira](https://github.com/vcpVitor) |
 | `1.1` | 04/10/2026 | Correção com os dados registrados do treino: média e desvio dos cinco treinos, resultado por semente, divisão dos dados, origem do conjunto e variação `improved` | [Thales Germano Vargas Lima](https://github.com/thalesgvl) | A definir |
+| `1.2` | 30/10/2026 | Código de treino no repositório, semente do arquivo de pesos e próximos passos atualizados | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | A definir |
