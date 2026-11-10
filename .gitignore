@@ -11,5 +11,16 @@ coverage.xml
 *.pt
 *.pth
 
+# Conjunto de dados e saídas do treino
+/treino/data/
+/treino/outputs/
+/treino/label.csv
+*.egg-info/
+
+# Registros do MLflow criados fora de treino/outputs
+mlruns/
+mlartifacts/
+mlflow.db
+
 # Pasta montada por exportacao.aparelho, com desenhos do conjunto de dados
 /aparelho-teste/

@@ -1,0 +1,60 @@
+# Same as configs/original.yaml, with ONE change: VGG16 -> ConvNeXt V2 Tiny backbone.
+# Professor's suggestion (2026-10-19 meeting) — test the backbone swap before combining
+# with any of IMPROVEMENTS.md's other ideas, so a win/loss is attributable to the
+# backbone alone. Everything else (data, splits, soft label, optimizer, epochs,
+# augmentation) is identical to `original` on purpose.
+experiment_name: convnextv2
+
+seed_list: [0, 1, 2, 3, 4]
+
+data:
+  images_dir: data/images
+  label_csv: label.csv
+  moca_cutoff: 25
+  soft_label_center: 24.5
+  train_frac: 0.70
+  val_frac: 0.15
+  test_frac: 0.15
+  tasks: [clock, copy, trail]
+  num_workers: 4
+
+model:
+  type: multi_input_conv_att
+  backbone: convnextv2_tiny   # was vgg16. timm model, 27.9M params/tower (vs VGG16's 14.7M) —
+                               # NOTE: this is *more* capacity than VGG16, not less, so it is not
+                               # a capacity-reduction experiment, just an architecture-family swap.
+                               # For a capacity-matched comparison instead, use convnextv2_nano
+                               # (~15M params/tower, close to VGG16) or convnextv2_pico (~8.6M).
+  hidden_dim: 128
+  num_layers: 3
+  num_heads: 1
+  ff_dim: 512
+  dropout: 0.1
+  pretrained_backbone: true
+  train_backbone: true
+  use_pos_embed: false
+
+label_mode: soft
+
+training:
+  epochs: 100
+  batch_size: 64
+  micro_batch_size: 8    # ConvNeXt V2 Tiny is bigger than VGG16 (85.7M vs 46.1M total params);
+                          # micro_batch_size:16 peaked at 8.56/8.6GB (no safety margin for a
+                          # multi-hour unattended run) -> dropped to 8 (~5.1GB peak, real headroom)
+  optimizer: adam
+  lr: 1.0e-5
+  betas: [0.9, 0.99]
+  eps: 1.0e-7
+  weight_decay: 0.0
+  lr_schedule: none
+  model_selection: last
+  class_balanced_sampling: false
+  amp: true
+
+augmentation:
+  pad: 12
+  crop_size: 256
+  extra: none
+
+output_dir: outputs/convnextv2

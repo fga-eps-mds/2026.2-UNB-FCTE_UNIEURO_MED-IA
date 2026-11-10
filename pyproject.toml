@@ -36,5 +36,5 @@ pythonpath = ["."]
 
 [tool.coverage.run]
 source = ["."]
-omit = ["tests/*", "metrics/*"]
+omit = ["tests/*", "metrics/*", "treino/*"]
 relative_files = true
