@@ -101,8 +101,8 @@ do arquivo traz o identificador do paciente.
 python -m pytest
 ```
 
-Os testes usam dados inventados e um banco temporário. Eles ficam fora do pipeline do repositório, que usa o
-ambiente da raiz, sem o MLflow.
+Os testes usam dados inventados e um banco temporário. No pipeline, eles rodam no job "Testes do treino" do
+`build.yml`, num ambiente só com CPU montado a partir do `requirements.txt`, separado do ambiente da raiz.
 
 No Windows, crie o ambiente em `treino/.venv` ou outro caminho curto. O MLflow tem arquivos de nome longo, e o
 limite de 260 caracteres do caminho quebra a criação do banco quando a pasta é muito funda.
@@ -113,3 +113,4 @@ limite de 260 caracteres do caminho quebra a criação do banco quando a pasta �
 |---|---|---|---|---|---|
 | 1.0 | Inclusão do código de treino e dos scripts de conferência | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 30/10/2026 | A definir | A definir |
 | 1.1 | Registro dos treinos no MLflow | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 02/11/2026 | A definir | A definir |
+| 1.2 | Testes do treino no pipeline | [Vitor Carvalho Pereira](https://github.com/vcpVitor) e [Thales Germano](https://github.com/thalesgvl) | 15/11/2026 | A definir | A definir |
