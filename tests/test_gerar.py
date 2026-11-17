@@ -3,6 +3,7 @@ import torch
 from PIL import Image
 
 from exportacao import gerar
+from exportacao.exportar import SAIDAS
 from exportacao.imagens import ARQUIVOS, amostras_aleatorias
 
 
@@ -32,7 +33,8 @@ def test_main_exporta_e_confere_com_amostras_aleatorias(
 
     saida = capsys.readouterr().out
     assert destino.exists()
-    assert "Maior diferença de escore em 2 amostras" in saida
+    for nome in SAIDAS:
+        assert f"Maior diferença em {nome}, em 2 amostras" in saida
     assert "Dentro da tolerância de 1e-04: sim" in saida
     assert "Memória ocupada pela sessão" in saida
 
@@ -45,4 +47,4 @@ def test_main_confere_com_os_desenhos_da_pasta(modelo_pequeno_como_treinado, cap
 
     gerar.main(["model.pt", str(tmp_path / "modelo.onnx"), "--imagens", str(tmp_path / "imagens")])
 
-    assert "Maior diferença de escore em 3 amostras" in capsys.readouterr().out
+    assert "Maior diferença em probabilidade_ccl, em 3 amostras" in capsys.readouterr().out

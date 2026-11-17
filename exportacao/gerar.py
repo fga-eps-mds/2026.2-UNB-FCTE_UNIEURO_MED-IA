@@ -10,7 +10,7 @@ from pathlib import Path
 
 from torch import nn
 
-from exportacao.conferir import Conferencia, conferir_escores
+from exportacao.conferir import Conferencia, conferir_saidas
 from exportacao.exportar import exportar_onnx
 from exportacao.imagens import Amostra, amostras_aleatorias, amostras_da_pasta
 from exportacao.medir import Medicao, medir_execucao
@@ -27,7 +27,7 @@ class Resultado:
 
 def gerar(modelo: nn.Module, destino: Path, amostras: list[Amostra], lado: int) -> Resultado:
     caminho = exportar_onnx(modelo, destino, lado)
-    conferencia = conferir_escores(modelo, caminho, amostras)
+    conferencia = conferir_saidas(modelo, caminho, amostras)
 
     return Resultado(
         parametros=sum(parametro.numel() for parametro in modelo.parameters()),
@@ -54,8 +54,8 @@ def main(argumentos: list[str] | None = None) -> None:
     conferencia = resultado.conferencia
     print(f"Parâmetros: {resultado.parametros}")
     print(f"Arquivo exportado: {resultado.tamanho_mb:.1f} MB")
-    print(f"Maior diferença de escore em {conferencia.amostras} amostras: "
-          f"{conferencia.maior_diferenca:.2e}")
+    for saida, diferenca in conferencia.maiores_diferencas.items():
+        print(f"Maior diferença em {saida}, em {conferencia.amostras} amostras: {diferenca:.2e}")
     print(f"Dentro da tolerância de {conferencia.tolerancia:.0e}: "
           f"{'sim' if conferencia.aprovada else 'não'}")
     print(f"Tempo por avaliação neste computador: {resultado.medicao.segundos_por_avaliacao:.2f} s")

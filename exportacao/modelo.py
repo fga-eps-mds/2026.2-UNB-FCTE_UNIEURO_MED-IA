@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 LADO = 256
@@ -9,6 +8,9 @@ LADO = 256
 VGG16 = (64, 64, "M", 128, 128, "M", 256, 256, 256, "M", 512, 512, 512, "M", 512, 512, 512, "M")
 MEDIA_IMAGENET = (0.485, 0.456, 0.406)
 DESVIO_IMAGENET = (0.229, 0.224, 0.225)
+# Mesmo peso da identidade e mesmo epsilon de treino/src/mci/attention_rollout.py, para o mapa bater com o do treino.
+PESO_DA_IDENTIDADE = 0.5
+EPSILON_DO_MAPA = 1e-8
 
 # Os atributos em inglês repetem os nomes gravados no arquivo de pesos do treino.
 
@@ -42,8 +44,10 @@ class Atencao(nn.Module):
         lote, quantidade, dimensao = tokens.shape
         qkv = self.qkv(tokens).reshape(lote, quantidade, 3, self.cabecas, dimensao // self.cabecas)
         consulta, chave, valor = qkv.permute(2, 0, 3, 1, 4)
-        saida = F.scaled_dot_product_attention(consulta, chave, valor)
-        return self.proj(saida.transpose(1, 2).reshape(lote, quantidade, dimensao))
+        # Softmax explícito, e não o scaled_dot_product_attention, porque o mapa de cada desenho sai dos pesos da atenção.
+        pesos = (consulta @ chave.transpose(-2, -1) * consulta.shape[-1] ** -0.5).softmax(dim=-1)
+        saida = (pesos @ valor).transpose(1, 2).reshape(lote, quantidade, dimensao)
+        return self.proj(saida), pesos
 
 
 class Bloco(nn.Module):
@@ -58,8 +62,26 @@ class Bloco(nn.Module):
         self.norm2 = nn.LayerNorm(dimensao)
 
     def forward(self, tokens):
-        tokens = self.norm1(tokens + self.attn(tokens))
-        return self.norm2(tokens + self.ff(tokens))
+        atualizacao, pesos = self.attn(tokens)
+        tokens = self.norm1(tokens + atualizacao)
+        return self.norm2(tokens + self.ff(tokens)), pesos
+
+
+def rollout(pesos_por_camada: list[torch.Tensor]) -> torch.Tensor:
+    """Attention rollout (Abnar e Zuidema, 2020), o método do artigo para mostrar o que pesou no escore."""
+    identidade = torch.eye(pesos_por_camada[0].shape[-1], dtype=pesos_por_camada[0].dtype)
+    acumulado = identidade
+    for pesos in pesos_por_camada:
+        mistura = PESO_DA_IDENTIDADE * pesos.mean(dim=1) + (1 - PESO_DA_IDENTIDADE) * identidade
+        acumulado = mistura @ acumulado
+    return acumulado
+
+
+def normalizar_mapa(mapa: torch.Tensor) -> torch.Tensor:
+    plano = mapa.flatten(1)
+    minimo = plano.min(dim=1, keepdim=True).values
+    maximo = plano.max(dim=1, keepdim=True).values
+    return ((plano - minimo) / (maximo - minimo + EPSILON_DO_MAPA)).view_as(mapa)
 
 
 class Torre(nn.Module):
@@ -71,17 +93,24 @@ class Torre(nn.Module):
         self.blocks = nn.ModuleList(Bloco(dimensao, cabecas) for _ in range(camadas))
 
     def forward(self, imagem):
-        tokens = self.proj(self.backbone(imagem)).flatten(2).transpose(1, 2)
+        caracteristicas = self.proj(self.backbone(imagem))
+        altura, largura = caracteristicas.shape[-2:]
+        tokens = caracteristicas.flatten(2).transpose(1, 2)
         tokens = torch.cat([self.cls_token.expand(len(tokens), -1, -1), tokens], dim=1)
+        pesos_por_camada = []
         for bloco in self.blocks:
-            tokens = bloco(tokens)
-        return tokens[:, 0]
+            tokens, pesos = bloco(tokens)
+            pesos_por_camada.append(pesos)
+        # A linha do token de classe diz quanto cada região da grade pesou no resumo do desenho.
+        relevancia = rollout(pesos_por_camada)[:, 0, 1:].reshape(-1, altura, largura)
+        return tokens[:, 0], normalizar_mapa(relevancia)
 
 
 class ModeloBase(nn.Module):
     """Modelo do treino registrado em docs/resultados-modelo-base.md.
 
-    Recebe os três desenhos com valores de 0 a 1 e devolve a probabilidade de CCL.
+    Recebe os três desenhos com valores de 0 a 1 e devolve a probabilidade de CCL, a contribuição de cada
+    desenho e o mapa de cada desenho, nessa ordem.
     """
 
     def __init__(
@@ -94,11 +123,19 @@ class ModeloBase(nn.Module):
         self.register_buffer("desvio", torch.tensor(DESVIO_IMAGENET).view(1, 3, 1, 1), persistent=False)
 
     def forward(self, relogio, cubo, trilhas):
-        resumos = [
+        resumos, mapas = zip(*(
             torre((imagem - self.media) / self.desvio)
             for torre, imagem in zip(self.towers, (relogio, cubo, trilhas))
-        ]
-        return self.classifier(torch.cat(resumos, dim=1)).softmax(dim=1)[:, 1]
+        ))
+        probabilidade = self.classifier(torch.cat(resumos, dim=1)).softmax(dim=1)[:, 1]
+        return probabilidade, self.contribuicoes(resumos), torch.stack(mapas, dim=1)
+
+    def contribuicoes(self, resumos: tuple[torch.Tensor, ...]) -> torch.Tensor:
+        # Com duas classes, a probabilidade de CCL é a sigmoide da diferença entre os logits. O classificador é
+        # linear, então essa diferença é a soma de uma parcela por desenho com a diferença entre os vieses.
+        pesos_da_ccl = self.classifier.weight[1] - self.classifier.weight[0]
+        parcelas = pesos_da_ccl.view(len(resumos), -1)
+        return torch.stack([(resumo * parcela).sum(dim=1) for resumo, parcela in zip(resumos, parcelas)], dim=1)
 
 
 def carregar_modelo(caminho: Path) -> ModeloBase:
