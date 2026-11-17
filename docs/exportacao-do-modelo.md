@@ -85,8 +85,8 @@ servem para comparar as escolhas e não medem o desempenho do modelo. As perdas 
 da tabela foram medidos antes da versão 1.4, sem o último *pooling*, exceto na linha dele.
 
 A exportação e a conferência rodam com o comando do passo 4 de
-[Como reproduzir](#como-reproduzir). O comando grava o `.onnx`, calcula o escore de cada paciente com o modelo original
-e com o arquivo exportado e informa a maior diferença. A pasta de `--imagens` tem
+[Como reproduzir](#como-reproduzir). O comando grava o `.onnx`, calcula as três saídas da Tabela 4 para cada
+paciente com o modelo original e com o arquivo exportado e informa a maior diferença em cada saída. A pasta de `--imagens` tem
 uma subpasta por paciente, com `clock.png`, `copy.png` e `trail.png`, como no
 conjunto de dados. Sem essa opção a conferência usa imagens aleatórias.
 
@@ -113,7 +113,7 @@ A memória é o aumento da memória residente do processo entre antes de abrir a
 depois das 138 avaliações, medido com o `psutil` em
 [`exportacao/medir.py`](../exportacao/medir.py).
 
-A conferência é aprovada quando a maior diferença de escore fica em até 0,0001. O
+A conferência é aprovada quando a maior diferença em cada saída fica em até 0,0001. O
 exemplo da arquitetura mostra a probabilidade com duas casas decimais, e essa
 tolerância é cem vezes menor que a última casa exibida.
 
@@ -163,7 +163,8 @@ uv run pytest --cov
    ```
 
 6. Comparar o modelo do treino com a reconstrução, com e sem o último *pooling*, o que gera os
-   números da Tabela 6 e os da Tabela 7, menos os tempos. O `label.csv` vem do mesmo conjunto de
+   números da Tabela 6 e os da Tabela 7, menos os tempos. O script também compara o mapa de cada desenho
+   com o *attention rollout* do treino. O `label.csv` vem do mesmo conjunto de
    dados:
 
    ```bash
@@ -193,10 +194,34 @@ traz o que o arquivo exportado espera e devolve.
 | Valores de cada entrada | De 0 a 1, o valor do pixel dividido por 255 |
 | Fundo e traço | Como nas imagens do conjunto de dados |
 | Normalização | Feita dentro do arquivo exportado. O aplicativo não normaliza |
-| Saída | `probabilidade_ccl`, um número entre 0 e 1 |
+| Saídas | `probabilidade_ccl`, `contribuicoes` e `mapas`, nessa ordem |
+| `probabilidade_ccl` | `float32` com forma 1, um número entre 0 e 1 |
+| `contribuicoes` | `float32` com forma 1 × 3, uma por desenho na ordem das entradas, na escala do logit |
+| `mapas` | `float32` com forma 1 × 3 × 8 × 8, um mapa por desenho na ordem das entradas, com valores de 0 a 1 |
 
 **Fonte:** [`exportacao/exportar.py`](../exportacao/exportar.py) e
 [`exportacao/modelo.py`](../exportacao/modelo.py)
+
+### Contribuição e mapa de cada desenho
+
+A probabilidade de CCL é a sigmoide da diferença entre os dois logits do classificador. O classificador é uma
+camada linear sobre o resumo de cada torre, então essa diferença é a soma das três contribuições com uma
+constante do modelo, a diferença entre os vieses das duas classes. Uma contribuição positiva puxa o escore
+para CCL e uma negativa puxa para o normal. A contribuição mede quanto cada desenho pesou dentro do escore
+único. Ela não substitui um escore de cada desenho sozinho, porque o modelo foi treinado só com os três
+desenhos juntos.
+
+O mapa é o *attention rollout* (Abnar e Zuidema, 2020), com a mesma fórmula de
+[`treino/src/mci/attention_rollout.py`](../treino/src/mci/attention_rollout.py). O cálculo usa só os pesos
+da atenção de cada torre, sem gradiente, e roda dentro do arquivo exportado como o resto do modelo. Cada mapa
+é a grade de 8 × 8 da última camada da VGG16, então cada célula cobre 32 × 32 px da imagem de 256 × 256 que
+entrou no modelo. Os valores vão de 0 a 1 em cada mapa, com 1 na região que mais pesou, como na função
+`overlay_heatmap` do mesmo arquivo.
+
+Para sobrepor o mapa ao desenho, o aplicativo amplia a grade sobre a mesma área que usou para montar a imagem
+de entrada. Se a imagem de entrada sai de um recorte do desenho, o mapa vale para esse recorte.
+
+Nenhuma avaliação clínica dos mapas nem das contribuições está registrada.
 
 ## Execução em um celular Android
 
@@ -364,7 +389,7 @@ e o contrato da Tabela 4, e ainda não foi executado no aplicativo.
    [Imagem gerada pelo aplicativo](#imagem-gerada-pelo-aplicativo).
 
 5. Rodar `sessao.run` com as entradas `relogio`, `cubo` e `trilhas`, no formato da
-   Tabela 4, e ler a saída `probabilidade_ccl`.
+   Tabela 4, e ler as saídas `probabilidade_ccl`, `contribuicoes` e `mapas` pelo nome.
 
 6. Conferir no aparelho com os mesmos desenhos da página de conferência. O escore de cada
    avaliação deve ficar a até 0,0001 do escore do computador gravado em
@@ -384,7 +409,9 @@ resolvido pela exportação.
    porque o conjunto de dados separa os pacientes pelo MoCA menor que 25.
 2. **Mapas de calor.** A arquitetura pede um mapa por desenho e recomenda que o
    modelo já os devolva como saída, porque o runtime do tablet pode não calcular
-   gradiente. O arquivo exportado devolve só a probabilidade.
+   gradiente. O arquivo exportado devolve os mapas na saída `mapas`, sem gradiente, como explicado em
+   [Contribuição e mapa de cada desenho](#contribuição-e-mapa-de-cada-desenho). Falta registrar as saídas
+   novas na seção 6.3 da arquitetura.
 3. **Tamanho no APK.** O arquivo tem 185,2 MB sem compressão. O `.gitignore` impede
    que um arquivo `.onnx` seja versionado por engano.
 4. **Publicação dos pesos.** Na [Ata 09](https://github.com/fga-eps-mds/2026.2-UNB-FCTE_UNIEURO_MED-DOCS/blob/main/docs/atas-reunioes/Ata-09-EPS-2026-10-05-PO.md) o *Product Owner* não se opôs à
@@ -419,3 +446,4 @@ resolvido pela exportação.
 | 1.3 | Restrição da pasta servida na rede e conferência de integridade do `onnxruntime-web` na página de conferência | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 28/10/2026 | A definir | A definir |
 | 1.4 | Correção do último *pooling* da VGG16, conferência com o código de treino e efeito do preparo da imagem do aplicativo | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 30/10/2026 | A definir | A definir |
 | 1.5 | Comparação sem o último *pooling* no script de conferência, para reproduzir a Tabela 7 | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 01/11/2026 | A definir | A definir |
+| 1.6 | Contribuição e mapa de cada desenho como saídas do arquivo exportado e conferência das três saídas | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 17/11/2026 | A definir | A definir |
