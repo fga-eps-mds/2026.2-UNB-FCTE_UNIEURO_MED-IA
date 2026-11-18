@@ -31,3 +31,34 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # Os testes do treino (treino/tests) precisam do ambiente do treino, com PyTorch e MLflow, que é
+  # diferente do ambiente da raiz. O treino de verdade precisa de GPU e fica fora daqui; os testes
+  # usam dados inventados e rodam em CPU (IA #28).
+  treino:
+    name: Testes do treino
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: treino
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Configurar o uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: treino/requirements.txt
+
+      # O torch e o torchvision vêm do índice de CPU, nas mesmas versões do requirements.txt, para não
+      # baixar a versão com CUDA. O resto sai do requirements.txt sem esses dois.
+      - name: Instalar o ambiente do treino
+        run: |
+          uv venv --python 3.11
+          uv pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
+          grep -v -E '^(torch|torchvision)==' requirements.txt > "$RUNNER_TEMP/requirements-sem-torch.txt"
+          uv pip install -r "$RUNNER_TEMP/requirements-sem-torch.txt"
+          uv pip install -e .
+
+      - name: Executar os testes do treino
+        run: .venv/bin/python -m pytest -q
