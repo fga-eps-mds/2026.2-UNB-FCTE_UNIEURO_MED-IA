@@ -176,6 +176,14 @@ uv run pytest --cov
    uv run --with scikit-learn==1.7.2 --with pandas --with opencv-python-headless --with pyyaml --with torchvision python treino/scripts/simular_imagem_do_app.py modelo.onnx --imagens images --rotulos label.csv --semente 1
    ```
 
+8. Redesenhar as imagens de teste como o aplicativo grava e comparar os preparos nas 5 sementes, o que
+   gera os números da Tabela 9 e a Figura 1. A pasta `--pesos` tem o `model.pt` de cada semente em
+   `seed_0` a `seed_4`, e `--quadro` muda o tamanho do quadro simulado:
+
+   ```bash
+   uv run --with scikit-learn==1.7.2 --with pandas --with opencv-python-headless --with pyyaml --with torchvision python treino/scripts/simular_preparo_do_app.py --pesos outputs/original --imagens images --rotulos label.csv
+   ```
+
 Sem o `model.pt`, os testes automatizados e o passo 4 sem `--imagens` ainda conferem a
 exportação, com um modelo pequeno e com imagens aleatórias.
 
@@ -330,6 +338,66 @@ Esse último ponto é um risco para a [#12 do aplicativo](https://github.com/fga
 porque a imagem pode ter o formato certo e ainda assim dar um escore deslocado. A simulação não substitui
 desenhos feitos no tablet, e o desempenho do modelo em imagens do aplicativo não foi medido.
 
+### Preparo pelo contorno do desenho
+
+O conjunto de dados já vem normalizado. Em todas as 2.754 imagens, a tinta vai de 13 a 242 px na
+horizontal e de 14 a 240 px na vertical: cada desenho foi esticado para caber num quadrado de cerca de
+224 px, centralizado na imagem de 256 × 256, com traço preto de 2,3 a 2,5 px e antialias. O modelo nunca
+viu um desenho pequeno dentro de um quadro grande. A simulação da Tabela 8 colocou essas imagens já
+normalizadas no centro do quadro, por isso o recorte central se saiu bem nela. No aplicativo, o paciente
+desenha em qualquer posição e tamanho, sempre com traço de 4 pt.
+
+Para medir esse caso, o script do passo 8 de [Como reproduzir](#como-reproduzir) extrai o traçado central
+de cada imagem de teste e o redesenha como o aplicativo grava: num quadro de 920 × 560, com traço de 4 pt
+na cor `#0F172A`, em posição variável e ocupando 40 %, 60 % ou 80 % da altura do quadro. Depois aplica
+cada preparo e roda o modelo de cada uma das 5 sementes nos 138 pacientes de teste dela. Os dois preparos
+pelo contorno não dependem do tamanho do quadro, porque recortam o desenho antes de reduzir.
+
+![Um paciente em cada preparo: imagem do conjunto, quadro do aplicativo, quadro esticado, recorte central, contorno da PNG e traçado vetorial](assets/preparo-imagem-do-app.jpeg)
+
+**Figura 1:** Um paciente de teste em cada preparo. Da esquerda para a direita: imagem do conjunto,
+desenho no quadro do aplicativo, quadro esticado, recorte central, contorno da PNG e traçado vetorial.
+
+**Tabela 9:** Efeito do preparo no escore, com o desenho ocupando 40 %, 60 % ou 80 % da altura do quadro
+
+| Preparo | Acurácia | AUC | Mesma classe que a imagem do conjunto | Diferença média de escore |
+|---------|----------|-----|----------------------------------------|---------------------------|
+| Imagem do conjunto, sem mudança | 0,754 | 0,765 | 100 % | 0 |
+| Quadro inteiro esticado | 0,288 · 0,359 · 0,543 | 0,650 · 0,704 · 0,721 | 23 % · 33 % · 54 % | 0,589 · 0,469 · 0,335 |
+| Recorte central do quadro | 0,320 · 0,600 · 0,694 | 0,677 · 0,716 · 0,744 | 28 % · 62 % · 79 % | 0,517 · 0,290 · 0,186 |
+| Contorno da PNG: recorte pela tinta, 224 × 224 e borda de 16 px | 0,741 · 0,765 · 0,728 | 0,743 · 0,745 · 0,749 | 83 % · 88 % · 86 % | 0,166 · 0,104 · 0,132 |
+| Traçado vetorial: pontos redesenhados em 256 × 256, caixa de 224, borda de 16 px e traço de 2,5 px | 0,770 · 0,768 · 0,770 | 0,751 · 0,751 · 0,751 | 89 % · 90 % · 89 % | 0,089 · 0,089 · 0,089 |
+
+**Fonte:** [Thales Germano Vargas Lima](https://github.com/thalesgvl), 2026. Média das 5 sementes, nos
+138 pacientes de teste de cada uma. Os três valores de cada célula são de 40 %, 60 % e 80 %. Medição de
+06/11/2026.
+
+A Tabela 9 leva a três conclusões:
+
+- O quadro esticado e o recorte central dependem do tamanho e da posição do desenho, que o paciente
+  decide. Com um desenho pequeno, o recorte central cai para 0,320 de acurácia.
+- Recortar pelo contorno, como o conjunto foi preparado, deixa o escore estável em qualquer tamanho. O
+  traçado vetorial é o mais estável: chega à acurácia da imagem do conjunto, com AUC um pouco menor
+  (0,751 contra 0,765).
+- Mesmo assim, cerca de 10 % dos pacientes trocam de classe só porque o traço foi redesenhado. Como na Tabela 8,
+  o modelo é sensível a detalhes do traço.
+
+### Preparo recomendado para o aplicativo
+
+Para a [#12 do aplicativo](https://github.com/fga-eps-mds/2026.2-UNB-FCTE_UNIEURO_MED-APP/issues/12), a
+entrada do modelo deve sair dos pontos do traçado, e não da PNG que o médico confere:
+
+1. Juntar os pontos dos traços que valem na tarefa, sem os desfeitos nem os apagados.
+2. Calcular a caixa dos pontos: o mínimo e o máximo em x e em y.
+3. Levar a caixa para 224 × 224, esticando cada eixo, e deslocar 16 px:
+   `x' = 16 + (x - xmin) * 223 / (xmax - xmin)`, e o mesmo para y.
+4. Desenhar os traços numa imagem de 256 × 256 com fundo branco, traço preto de 2,5 px, pontas
+   arredondadas e antialias.
+5. Entregar ao modelo os valores de 0 a 1 em RGB, na ordem e com os nomes da Tabela 4.
+
+Um traço quase reto deixa um dos lados da caixa perto de zero. Nesse caso, o aplicativo precisa limitar a
+ampliação desse eixo, porque o conjunto não tem esse caso e o comportamento do modelo nele não foi medido.
+
 ## Carregamento no aplicativo
 
 Pela arquitetura, o arquivo fica em `assets/modelo` no aplicativo e é carregado pelo
@@ -397,8 +465,10 @@ resolvido pela exportação.
    [teste de 20/10/2026](https://github.com/fga-eps-mds/2026.2-UNB-FCTE_UNIEURO_MED-DOCS/blob/main/docs/produto/modelo-ia-experimentos.md)
    não mostrou melhora, e este arquivo exporta a VGG16. A escolha do modelo que vai para o aplicativo não
    está registrada.
-8. **Imagem do aplicativo.** A sensibilidade da Tabela 8 pede uma decisão sobre como
-   aproximar a imagem do aplicativo das imagens do treino, ou sobre treinar com imagens parecidas com as dele.
+8. **Imagem do aplicativo.** A Tabela 9 indica o preparo pelo contorno do desenho, descrito em
+   [Preparo recomendado para o aplicativo](#preparo-recomendado-para-o-aplicativo). Faltam rodar o modelo
+   com desenhos feitos à mão no tablet e decidir se vale treinar com imagens redesenhadas no estilo do
+   aplicativo, já que cerca de 10 % dos pacientes ainda trocam de classe na simulação.
 
 ## Situação da issue
 
@@ -419,3 +489,4 @@ resolvido pela exportação.
 | 1.3 | Restrição da pasta servida na rede e conferência de integridade do `onnxruntime-web` na página de conferência | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 28/10/2026 | A definir | A definir |
 | 1.4 | Correção do último *pooling* da VGG16, conferência com o código de treino e efeito do preparo da imagem do aplicativo | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 30/10/2026 | A definir | A definir |
 | 1.5 | Comparação sem o último *pooling* no script de conferência, para reproduzir a Tabela 7 | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 01/11/2026 | A definir | A definir |
+| 1.6 | Normalização do conjunto de dados, simulação do desenho do aplicativo nas 5 sementes e preparo recomendado pelo contorno do desenho (IA #21) | [Thales Germano Vargas Lima](https://github.com/thalesgvl) | 06/11/2026 | A definir | A definir |
