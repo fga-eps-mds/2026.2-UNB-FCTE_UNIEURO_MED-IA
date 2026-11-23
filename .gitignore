@@ -24,3 +24,6 @@ mlflow.db
 
 # Pasta montada por exportacao.aparelho, com desenhos do conjunto de dados
 /aparelho-teste/
+
+# Tabelas por desenho gravadas por treino/scripts/comparar_mapas.py, com o identificador de cada paciente
+/saidas-locais/
