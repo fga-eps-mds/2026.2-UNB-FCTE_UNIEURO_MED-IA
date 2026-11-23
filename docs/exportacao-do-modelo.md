@@ -163,8 +163,7 @@ uv run pytest --cov
    ```
 
 6. Comparar o modelo do treino com a reconstrução, com e sem o último *pooling*, o que gera os
-   números da Tabela 6 e os da Tabela 7, menos os tempos. O script também compara o mapa de cada desenho
-   com o *attention rollout* do treino. O `label.csv` vem do mesmo conjunto de
+   números da Tabela 6 e os da Tabela 7, menos os tempos. O `label.csv` vem do mesmo conjunto de
    dados:
 
    ```bash
@@ -175,6 +174,20 @@ uv run pytest --cov
 
    ```bash
    uv run --with scikit-learn==1.7.2 --with pandas --with opencv-python-headless --with pyyaml --with torchvision python treino/scripts/simular_imagem_do_app.py modelo.onnx --imagens images --rotulos label.csv --semente 1
+   ```
+
+8. Conferir as três saídas do arquivo exportado no conjunto de teste, o que gera os números da Tabela 9:
+
+   ```bash
+   uv run --with scikit-learn==1.7.2 --with pandas --with opencv-contrib-python-headless --with pyyaml --with torchvision python treino/scripts/conferir_saidas_onnx.py modelo.onnx --imagens images --rotulos label.csv --semente 1
+   ```
+
+9. Comparar o mapa com outros métodos de explicação, o que gera os números da Tabela 10. O script
+   grava uma linha por desenho em `saidas-locais/`, a cada paciente, e `--limite` define quantos
+   pacientes de teste entram:
+
+   ```bash
+   uv run --with scikit-learn==1.7.2 --with pandas --with opencv-contrib-python-headless --with pyyaml --with torchvision python treino/scripts/comparar_mapas.py model.pt --imagens images --rotulos label.csv --semente 1 --limite 20
    ```
 
 Sem o `model.pt`, os testes automatizados e o passo 4 sem `--imagens` ainda conferem a
@@ -197,7 +210,7 @@ traz o que o arquivo exportado espera e devolve.
 | Saídas | `probabilidade_ccl`, `contribuicoes` e `mapas`, nessa ordem |
 | `probabilidade_ccl` | `float32` com forma 1, um número entre 0 e 1 |
 | `contribuicoes` | `float32` com forma 1 × 3, uma por desenho na ordem das entradas, na escala do logit |
-| `mapas` | `float32` com forma 1 × 3 × 8 × 8, um mapa por desenho na ordem das entradas, com valores de 0 a 1 |
+| `mapas` | `float32` com forma 1 × 3 × 8 × 8, um mapa por desenho na ordem das entradas, na escala do logit e com sinal |
 
 **Fonte:** [`exportacao/exportar.py`](../exportacao/exportar.py) e
 [`exportacao/modelo.py`](../exportacao/modelo.py)
@@ -211,17 +224,100 @@ para CCL e uma negativa puxa para o normal. A contribuição mede quanto cada de
 único. Ela não substitui um escore de cada desenho sozinho, porque o modelo foi treinado só com os três
 desenhos juntos.
 
-O mapa é o *attention rollout* (Abnar e Zuidema, 2020), com a mesma fórmula de
-[`treino/src/mci/attention_rollout.py`](../treino/src/mci/attention_rollout.py). O cálculo usa só os pesos
-da atenção de cada torre, sem gradiente, e roda dentro do arquivo exportado como o resto do modelo. Cada mapa
-é a grade de 8 × 8 da última camada da VGG16, então cada célula cobre 32 × 32 px da imagem de 256 × 256 que
-entrou no modelo. Os valores vão de 0 a 1 em cada mapa, com 1 na região que mais pesou, como na função
-`overlay_heatmap` do mesmo arquivo.
+Cada mapa é a grade de 8 × 8 da última camada da VGG16, então cada célula cobre 32 × 32 px da imagem de
+256 × 256 que entrou no modelo. O mapa é calculado por oclusão das regiões (Zeiler e Fergus, 2014): o valor
+de uma célula é quanto a contribuição do desenho cai quando aquela região é coberta com papel em branco. A
+oclusão é feita nos tokens: o token da região é trocado pelo token que a mesma posição tem numa folha toda
+branca, e o resumo da torre é calculado de novo. Um valor positivo diz que a região puxou o escore para CCL,
+um negativo, que puxou para o normal, e uma região sem traço dá zero. O mapa fica na mesma escala do logit
+que a contribuição.
+
+Como roda o próprio modelo com a região coberta, o mapa mede o efeito da região no próprio escore, sem aproximação. Ele não
+usa gradiente e roda dentro do arquivo exportado como o resto do modelo: a VGG16 passa uma vez por desenho e
+os blocos de atenção passam 64 vezes, uma por região, em lote. O token da folha branca fica guardado no
+modelo e é recalculado sempre que os pesos são carregados.
+
+A versão 1.6 deste documento usava o *attention rollout* (Abnar e Zuidema, 2020). A Tabela 9 mostrou que
+esse mapa quase não diferia entre a tinta e o fundo, e a comparação da Tabela 10 mostrou que ele não
+acompanha o efeito de apagar a região, por isso ele foi trocado.
 
 Para sobrepor o mapa ao desenho, o aplicativo amplia a grade sobre a mesma área que usou para montar a imagem
 de entrada. Se a imagem de entrada sai de um recorte do desenho, o mapa vale para esse recorte.
 
 Nenhuma avaliação clínica dos mapas nem das contribuições está registrada.
+
+### Conferência das três saídas no conjunto de teste
+
+O script [`treino/scripts/conferir_saidas_onnx.py`](../treino/scripts/conferir_saidas_onnx.py) roda o arquivo
+exportado nos 138 pacientes de teste da semente 1 e confere se cada saída faz sentido. O escore é medido com as
+imagens do conjunto e com as mesmas imagens redesenhadas como o aplicativo prepara a entrada: o traçado
+central de cada desenho, a caixa dos pontos esticada até 224 px e o traço preto de 2,5 px.
+
+**Tabela 9:** Saídas do arquivo exportado nos 138 pacientes de teste da semente 1
+
+| Medida | Resultado |
+|--------|-----------|
+| AUC e acurácia com as imagens do conjunto | 0,800 e 0,775, os mesmos do treino na Tabela 6 |
+| AUC e acurácia com o preparo do aplicativo | 0,758 e 0,725 |
+| Pacientes na mesma classe nos dois preparos | 89,1 %, com diferença média de escore de 0,109 |
+| Escore médio com e sem CCL | 0,605 e 0,261 |
+| Logit do escore menos a soma das contribuições | 0,0299 em todos os pacientes, com desvio de 6,8 × 10⁻⁷ |
+| Efeito médio do mapa, em módulo, nas células com tinta e sem tinta | 0,0325 e 0,0198 |
+| Correlação de Spearman entre o efeito e a tinta de cada célula | 0,23 |
+| Entropia do mapa, de 0 a 1, em que 1 é uniforme | 0,90 |
+
+**Fonte:** [Artur Mendonça Arruda](https://github.com/ArtyMend07), 2026. Arquivo `vgg16-semente1-v1.7`, o mesmo
+do APK de 22/11/2026, com o `model.pt` da semente 1. As três últimas linhas usam as imagens do conjunto. Medição
+de 23/11/2026. Com o *attention rollout* da versão 1.6, as três últimas linhas davam 0,409 e 0,402 (valor
+normalizado de 0 a 1), 0,03 e 0,96.
+
+A contribuição se comporta como a conta da seção anterior prevê: a diferença entre o logit e a soma das três
+contribuições é a mesma constante em todos os pacientes, então a parte de cada desenho no escore é exata. O
+escore e as contribuições são os mesmos da versão 1.6, porque só o cálculo do mapa mudou.
+
+O mapa por oclusão das regiões tem efeito maior nas células com tinta do que no fundo, ao contrário do
+*attention rollout*, que quase não diferia entre os dois. As células sem tinta não ficam em zero porque a
+região que cada célula da VGG16 enxerga passa dos 32 × 32 px dela e alcança o traço vizinho.
+
+### Comparação do mapa com outros métodos
+
+O script [`treino/scripts/comparar_mapas.py`](../treino/scripts/comparar_mapas.py) compara cinco métodos de
+mapa com uma referência, a oclusão na própria imagem: apagar a tinta de uma célula e medir quanto a
+contribuição do desenho cai. Essa referência é a mais fiel ao modelo, mas pede uma passada da VGG16 por
+célula com tinta e não cabe no tablet. Cada método é medido de duas formas:
+
+- a correlação de Spearman entre o mapa e a referência, nas células com tinta;
+- a queda média da contribuição ao apagar, uma a uma, as cinco células que o método mais culpa (AOPC). Um
+  método fiel faz a contribuição cair mais do que apagar cinco células ao acaso.
+
+**Tabela 10:** Métodos de mapa frente à oclusão na imagem, em 60 desenhos de teste da semente 1
+
+| Método | Spearman, conjunto | Spearman, preparo do app | Queda, conjunto | Queda, preparo do app |
+|--------|:------------------:|:------------------------:|:---------------:|:---------------------:|
+| Oclusão na imagem (referência) | 1,000 | 1,000 | +0,452 | +0,419 |
+| Oclusão das regiões nos tokens (arquivo exportado) | 0,302 | 0,302 | +0,039 | +0,074 |
+| Token da região retirado da atenção | 0,295 | 0,298 | — | — |
+| Grad-CAM | 0,292 | 0,297 | +0,021 | +0,069 |
+| Gradiente vezes ativação | 0,294 | 0,300 | — | — |
+| *Attention rollout* (versão 1.6) | 0,061 | 0,088 | −0,312 | −0,176 |
+| Cinco células ao acaso | — | — | −0,282 | −0,245 |
+
+**Fonte:** [Artur Mendonça Arruda](https://github.com/ArtyMend07), 2026. Os 20 primeiros pacientes de teste da
+semente 1, com os três desenhos de cada um, e o `model.pt` da semente 1. A curva de apagamento só foi medida nos
+métodos com valor na tabela. Medição de 22/11/2026.
+
+A Tabela 10 leva a três conclusões:
+
+- O *attention rollout* não acompanha a referência, e apagar as células que ele mais destaca faz a contribuição
+  cair menos do que apagar células ao acaso. Por isso ele saiu do arquivo exportado.
+- A oclusão das regiões nos tokens e o Grad-CAM ficam praticamente empatados, com a oclusão um pouco à frente
+  nas duas medidas. A oclusão foi escolhida porque roda dentro do arquivo exportado sem gradiente, e o runtime
+  do tablet não calcula gradiente.
+- Nenhum método barato chega perto da referência: a correlação fica em torno de 0,3. Com 60 desenhos, a
+  diferença entre os métodos do meio da tabela não é conclusiva.
+
+Nenhuma avaliação clínica dos mapas está registrada. Mostrar o mapa ao médico como a região que pesou no escore
+ainda depende de o parceiro clínico conferir se as regiões fazem sentido.
 
 ## Execução em um celular Android
 
@@ -263,7 +359,26 @@ Limites deste resultado:
   `onnxruntime-react-native`. O tempo dentro do aplicativo não foi medido.
 - A página rodou o modelo em uma única *thread*.
 - A memória no celular não foi medida.
-- O celular não é o tablet do parceiro. A medição no tablet continua pendente.
+- O celular não é o tablet do parceiro. O tempo no tablet está em [Execução no tablet](#execução-no-tablet).
+
+## Execução no tablet
+
+O APK de 22/11/2026 foi instalado no tablet e rodou exames completos, com o arquivo `vgg16-semente1-v1.7` e o
+[`onnxruntime-react-native`](https://www.npmjs.com/package/onnxruntime-react-native) 1.24.3 só na CPU.
+
+**Tabela 11:** Execução do modelo no aplicativo, no tablet
+
+| Medida | Resultado |
+|--------|-----------|
+| Aparelho | Samsung Galaxy Tab A11+ |
+| Tempo por avaliação, com as três saídas | Cerca de 1,5 s |
+
+**Fonte:** [Artur Mendonça Arruda](https://github.com/ArtyMend07), 2026. Tempo observado no aplicativo, sem
+medição repetida nem registro por avaliação.
+
+A avaliação no tablet é bem mais rápida que os 11,94 s do celular da Tabela 5. A página do celular rodava o
+modelo em WebAssembly, numa única *thread*, e o aplicativo usa o ONNX Runtime nativo. O tempo do tablet já inclui
+o mapa, que roda os blocos de atenção 64 vezes por desenho. A memória no tablet não foi medida.
 
 ## Conferência com o código de treino
 
@@ -397,7 +512,9 @@ e o contrato da Tabela 4, e ainda não foi executado no aplicativo.
 
 O relato aberto sobre o *config plugin* com `npx expo prebuild`, citado em
 [Formato proposto](#formato-proposto), é um ponto a observar ao gerar o build do
-aplicativo com a biblioteca.
+aplicativo com a biblioteca. Na versão 1.24.3, o pacote traz um `unimodule.json`, e a ligação
+automática do Expo 57 o trata como módulo do Expo e o deixa de fora do Android. O aplicativo
+contorna isso declarando o pacote no `react-native.config.js` do projeto.
 
 ## Pontos que precisam de decisão
 
@@ -411,12 +528,13 @@ resolvido pela exportação.
    modelo já os devolva como saída, porque o runtime do tablet pode não calcular
    gradiente. O arquivo exportado devolve os mapas na saída `mapas`, sem gradiente, como explicado em
    [Contribuição e mapa de cada desenho](#contribuição-e-mapa-de-cada-desenho). Falta registrar as saídas
-   novas na seção 6.3 da arquitetura.
+   novas na seção 6.3 da arquitetura e validar com o parceiro clínico se as regiões destacadas fazem
+   sentido para o médico.
 3. **Tamanho no APK.** O arquivo tem 185,2 MB sem compressão. O `.gitignore` impede
    que um arquivo `.onnx` seja versionado por engano.
 4. **Publicação dos pesos.** Na [Ata 09](https://github.com/fga-eps-mds/2026.2-UNB-FCTE_UNIEURO_MED-DOCS/blob/main/docs/atas-reunioes/Ata-09-EPS-2026-10-05-PO.md) o *Product Owner* não se opôs à
    publicação dos pesos do modelo treinado pela equipe, e a decisão ficou com a equipe.
-5. **Tablet.** O modelo do aparelho e a versão do Android ainda não foram informados.
+5. **Tablet.** O aparelho é o Samsung Galaxy Tab A11+ (Tabela 11). A versão do Android não foi registrada.
 6. **Limite de tempo.** A issue pede o tempo de cálculo dentro do limite combinado
    com o parceiro, e esse limite ainda não foi combinado.
 7. **Modelo da R3.** Na [Ata 10](https://github.com/fga-eps-mds/2026.2-UNB-FCTE_UNIEURO_MED-DOCS/blob/main/docs/atas-reunioes/Ata-10-EPS-2026-10-19-PO.md)
@@ -433,7 +551,7 @@ resolvido pela exportação.
 |-----------------------|----------|
 | Escolher o formato de exportação junto com o time do aplicativo | ONNX com ONNX Runtime, proposto neste documento e aceito pelo time do aplicativo em 22/10/2026 |
 | Conferir que o modelo exportado dá os mesmos escores que o original | Feita com o modelo treinado em 138 pacientes no computador (Tabela 3), confirmada com o código de treino (Tabela 6) e repetida em 10 avaliações no celular (Tabela 5) |
-| Medir o tempo de cálculo e o uso de memória no tablet do parceiro | Tempo e memória medidos no computador (Tabela 3) e tempo medido em um celular Android (Tabela 5). A medição no tablet continua pendente |
+| Medir o tempo de cálculo e o uso de memória no tablet do parceiro | Tempo e memória medidos no computador (Tabela 3), tempo medido em um celular Android (Tabela 5) e tempo observado no tablet (Tabela 11). A memória no tablet continua sem medição |
 | Instruções de como o aplicativo carrega o modelo | Contrato na Tabela 4 e passo a passo em [Carregamento no aplicativo](#carregamento-no-aplicativo) |
 
 ## Histórico de Versões
@@ -447,3 +565,6 @@ resolvido pela exportação.
 | 1.4 | Correção do último *pooling* da VGG16, conferência com o código de treino e efeito do preparo da imagem do aplicativo | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 30/10/2026 | A definir | A definir |
 | 1.5 | Comparação sem o último *pooling* no script de conferência, para reproduzir a Tabela 7 | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 01/11/2026 | A definir | A definir |
 | 1.6 | Contribuição e mapa de cada desenho como saídas do arquivo exportado e conferência das três saídas | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 17/11/2026 | A definir | A definir |
+| 1.7 | Conferência das três saídas no conjunto de teste, com o preparo do aplicativo, e avaliação dos mapas | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 21/11/2026 | A definir | A definir |
+| 1.8 | Mapa de cada desenho por oclusão das regiões, no lugar do *attention rollout*, e comparação com outros métodos | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 21/11/2026 | A definir | A definir |
+| 1.9 | Conferência das saídas com o arquivo do APK, comparação dos mapas na Tabela 10 e tempo no tablet | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 23/11/2026 | A definir | A definir |
