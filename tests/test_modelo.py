@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 
 from exportacao.imagens import amostras_aleatorias
-from exportacao.modelo import LADO, VGG16, Atencao, Extrator, ModeloBase, carregar_modelo, rollout
+from exportacao.modelo import BRANCO, LADO, VGG16, Atencao, Extrator, ModeloBase, carregar_modelo
 
 GRADE_DO_MODELO_PEQUENO = (8, 8)
 
@@ -38,34 +38,38 @@ def test_atencao_explicita_da_o_mesmo_resultado_que_a_do_pytorch(cabecas):
     torch.testing.assert_close(pesos.sum(dim=-1), torch.ones(2, cabecas, 5))
 
 
-def test_rollout_de_uma_camada_mistura_a_media_das_cabecas_com_a_identidade():
-    cabecas = torch.tensor([[[[1.0, 0.0], [0.0, 1.0]], [[0.0, 1.0], [1.0, 0.0]]]])
+def test_desenho_em_branco_tem_mapa_zerado(modelo, lado):
+    folha = torch.full((2, 3, lado, lado), BRANCO)
 
-    resultado = rollout([cabecas])
-
-    torch.testing.assert_close(resultado, torch.tensor([[[0.75, 0.25], [0.25, 0.75]]]))
-
-
-def test_rollout_aplica_a_camada_mais_funda_por_ultimo():
-    primeira = torch.tensor([[[[0.0, 1.0], [0.0, 1.0]]]])
-    segunda = torch.tensor([[[[1.0, 0.0], [1.0, 0.0]]]])
-    mistura_primeira = torch.tensor([[0.5, 0.5], [0.0, 1.0]])
-    mistura_segunda = torch.tensor([[1.0, 0.0], [0.5, 0.5]])
-
-    resultado = rollout([primeira, segunda])
-
-    torch.testing.assert_close(resultado, (mistura_segunda @ mistura_primeira).unsqueeze(0))
-
-
-def test_devolve_um_mapa_de_0_a_1_por_desenho(modelo, lado):
-    relogio, cubo, trilhas = (torch.rand(2, 3, lado, lado) for _ in range(3))
-
-    _, _, mapas = modelo(relogio, cubo, trilhas)
+    _, _, mapas = modelo(folha, folha, folha)
 
     assert mapas.shape == (2, 3, *GRADE_DO_MODELO_PEQUENO)
-    planos = mapas.flatten(2)
-    torch.testing.assert_close(planos.min(dim=2).values, torch.zeros(2, 3))
-    torch.testing.assert_close(planos.max(dim=2).values, torch.ones(2, 3))
+    torch.testing.assert_close(mapas, torch.zeros_like(mapas))
+
+
+@pytest.mark.parametrize("regiao", [0, 27, 63])
+def test_mapa_e_a_queda_da_contribuicao_quando_a_regiao_vira_papel_em_branco(modelo, lado, regiao):
+    (relogio, cubo, trilhas), = amostras_aleatorias(1, lado)
+    torre = modelo.towers[1]
+    tokens = torre(modelo.normalizar(cubo))
+    tokens[:, regiao] = modelo.papel_em_branco[1, regiao]
+    sem_a_regiao = (torre.resumir(tokens) * modelo.parcelas()[1]).sum(dim=1)
+
+    _, contribuicoes, mapas = modelo(relogio, cubo, trilhas)
+
+    torch.testing.assert_close(mapas[:, 1].flatten(1)[:, regiao], contribuicoes[:, 1] - sem_a_regiao)
+
+
+def test_papel_em_branco_acompanha_os_pesos_carregados(tmp_path):
+    torch.manual_seed(0)
+    torch.save(ModeloBase().state_dict(), tmp_path / "model.pt")
+    folha = torch.full((1, 3, LADO, LADO), BRANCO)
+
+    carregado = carregar_modelo(tmp_path / "model.pt")
+
+    with torch.no_grad():
+        esperado = carregado.towers[2](carregado.normalizar(folha))[0]
+    torch.testing.assert_close(carregado.papel_em_branco[2], esperado)
 
 
 def test_contribuicoes_somadas_ao_vies_dao_a_probabilidade(modelo, lado):

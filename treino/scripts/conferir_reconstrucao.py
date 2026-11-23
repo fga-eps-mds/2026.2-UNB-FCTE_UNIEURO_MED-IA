@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""Compara o modelo do treino com a reconstrução em exportacao/modelo.py, com e sem o último pooling,
-e o mapa de cada desenho com o attention rollout do treino.
+"""Compara o modelo do treino com a reconstrução em exportacao/modelo.py, com e sem o último pooling.
 
 Uso, na raiz do repositório:
     uv run --with scikit-learn==1.7.2 --with pandas --with opencv-python-headless --with pyyaml \
@@ -20,8 +19,7 @@ RAIZ = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(RAIZ), str(RAIZ / "treino" / "src")]
 
 from exportacao.imagens import ler_desenho  # noqa: E402
-from exportacao.modelo import LADO, VGG16, ModeloBase, carregar_modelo, normalizar_mapa  # noqa: E402
-from mci.attention_rollout import explain_sample  # noqa: E402
+from exportacao.modelo import LADO, VGG16, ModeloBase, carregar_modelo  # noqa: E402
 from mci.dataset import TASKS, MCIDataset, build_transforms, load_records, make_splits  # noqa: E402
 from mci.model import build_model  # noqa: E402
 from mci.utils import compute_metrics, load_config  # noqa: E402
@@ -56,26 +54,11 @@ def escores_do_treino(modelo: torch.nn.Module, registros: list, imagens: Path) -
 
 
 @torch.no_grad()
-def mapas_do_treino(modelo: torch.nn.Module, registros: list, imagens: Path) -> np.ndarray:
-    _, transformacao = build_transforms()
-    conjunto = MCIDataset(registros, imagens, TASKS, transformacao)
-    mapas = []
-    for amostra in conjunto:
-        _, por_tarefa = explain_sample(modelo, [imagem.unsqueeze(0) for imagem in amostra["images"]], "cpu")
-        mapas.append(normalizar_mapa(torch.from_numpy(np.stack(por_tarefa))).numpy())
-    return np.array(mapas)
-
-
-@torch.no_grad()
-def saidas_reconstruidas(modelo: torch.nn.Module, registros: list, imagens: Path) -> tuple[np.ndarray, np.ndarray]:
-    escores, mapas = [], []
-    for registro in registros:
-        probabilidade, _, mapa = modelo(
-            *(ler_desenho(imagens / registro.patient_id / f"{tarefa}.png", LADO) for tarefa in TASKS)
-        )
-        escores.append(probabilidade.item())
-        mapas.append(mapa[0].numpy())
-    return np.array(escores), np.array(mapas)
+def escores_reconstruidos(modelo: torch.nn.Module, registros: list, imagens: Path) -> np.ndarray:
+    return np.array([
+        modelo(*(ler_desenho(imagens / registro.patient_id / f"{tarefa}.png", LADO) for tarefa in TASKS))[0].item()
+        for registro in registros
+    ])
 
 
 def main() -> None:
@@ -91,8 +74,8 @@ def main() -> None:
     rotulos = np.array([registro.hard_label for registro in teste])
     do_treino = modelo_do_treino(opcoes.pesos, opcoes.configuracao)
     treino = escores_do_treino(do_treino, teste, opcoes.imagens)
-    reconstruido, mapas = saidas_reconstruidas(carregar_modelo(opcoes.pesos), teste, opcoes.imagens)
-    sem_pooling, _ = saidas_reconstruidas(reconstrucao_sem_ultimo_pooling(opcoes.pesos), teste, opcoes.imagens)
+    reconstruido = escores_reconstruidos(carregar_modelo(opcoes.pesos), teste, opcoes.imagens)
+    sem_pooling = escores_reconstruidos(reconstrucao_sem_ultimo_pooling(opcoes.pesos), teste, opcoes.imagens)
     diferenca_sem_pooling = np.abs(treino - sem_pooling)
     mudaram = int(((treino >= CORTE_DA_CLASSE) != (sem_pooling >= CORTE_DA_CLASSE)).sum())
 
@@ -100,7 +83,6 @@ def main() -> None:
     print(f"Modelo do treino: {compute_metrics(rotulos, treino)}")
     print(f"Reconstrução: {compute_metrics(rotulos, reconstruido)}")
     print(f"Maior diferença de escore: {np.abs(treino - reconstruido).max():.2e}")
-    print(f"Maior diferença de mapa: {np.abs(mapas_do_treino(do_treino, teste, opcoes.imagens) - mapas).max():.2e}")
     print(f"Sem o último pooling: {compute_metrics(rotulos, sem_pooling)}")
     print(f"Diferença para o treino sem o pooling: média {diferenca_sem_pooling.mean():.3f}, "
           f"maior {diferenca_sem_pooling.max():.3f}, mudaram de classe {mudaram}/{len(teste)}")

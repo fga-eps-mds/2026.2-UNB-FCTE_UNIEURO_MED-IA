@@ -8,9 +8,8 @@ LADO = 256
 VGG16 = (64, 64, "M", 128, 128, "M", 256, 256, 256, "M", 512, 512, 512, "M", 512, 512, 512, "M")
 MEDIA_IMAGENET = (0.485, 0.456, 0.406)
 DESVIO_IMAGENET = (0.229, 0.224, 0.225)
-# Mesmo peso da identidade e mesmo epsilon de treino/src/mci/attention_rollout.py, para o mapa bater com o do treino.
-PESO_DA_IDENTIDADE = 0.5
-EPSILON_DO_MAPA = 1e-8
+# Os desenhos do conjunto são traço preto sobre papel branco, e a entrada vai de 0 a 1.
+BRANCO = 1.0
 
 # Os atributos em inglês repetem os nomes gravados no arquivo de pesos do treino.
 
@@ -44,7 +43,7 @@ class Atencao(nn.Module):
         lote, quantidade, dimensao = tokens.shape
         qkv = self.qkv(tokens).reshape(lote, quantidade, 3, self.cabecas, dimensao // self.cabecas)
         consulta, chave, valor = qkv.permute(2, 0, 3, 1, 4)
-        # Softmax explícito, e não o scaled_dot_product_attention, porque o mapa de cada desenho sai dos pesos da atenção.
+        # Softmax explícito, como em treino/src/mci/model.py, para os pesos da atenção poderem ser conferidos com os do treino.
         pesos = (consulta @ chave.transpose(-2, -1) * consulta.shape[-1] ** -0.5).softmax(dim=-1)
         saida = (pesos @ valor).transpose(1, 2).reshape(lote, quantidade, dimensao)
         return self.proj(saida), pesos
@@ -67,23 +66,6 @@ class Bloco(nn.Module):
         return self.norm2(tokens + self.ff(tokens)), pesos
 
 
-def rollout(pesos_por_camada: list[torch.Tensor]) -> torch.Tensor:
-    """Attention rollout (Abnar e Zuidema, 2020), o método do artigo para mostrar o que pesou no escore."""
-    identidade = torch.eye(pesos_por_camada[0].shape[-1], dtype=pesos_por_camada[0].dtype)
-    acumulado = identidade
-    for pesos in pesos_por_camada:
-        mistura = PESO_DA_IDENTIDADE * pesos.mean(dim=1) + (1 - PESO_DA_IDENTIDADE) * identidade
-        acumulado = mistura @ acumulado
-    return acumulado
-
-
-def normalizar_mapa(mapa: torch.Tensor) -> torch.Tensor:
-    plano = mapa.flatten(1)
-    minimo = plano.min(dim=1, keepdim=True).values
-    maximo = plano.max(dim=1, keepdim=True).values
-    return ((plano - minimo) / (maximo - minimo + EPSILON_DO_MAPA)).view_as(mapa)
-
-
 class Torre(nn.Module):
     def __init__(self, blocos: tuple, dimensao: int, camadas: int, cabecas: int):
         super().__init__()
@@ -93,17 +75,14 @@ class Torre(nn.Module):
         self.blocks = nn.ModuleList(Bloco(dimensao, cabecas) for _ in range(camadas))
 
     def forward(self, imagem):
-        caracteristicas = self.proj(self.backbone(imagem))
-        altura, largura = caracteristicas.shape[-2:]
-        tokens = caracteristicas.flatten(2).transpose(1, 2)
+        """Um token por região da grade da última camada da VGG16, sem o token de classe."""
+        return self.proj(self.backbone(imagem)).flatten(2).transpose(1, 2)
+
+    def resumir(self, tokens):
         tokens = torch.cat([self.cls_token.expand(len(tokens), -1, -1), tokens], dim=1)
-        pesos_por_camada = []
         for bloco in self.blocks:
-            tokens, pesos = bloco(tokens)
-            pesos_por_camada.append(pesos)
-        # A linha do token de classe diz quanto cada região da grade pesou no resumo do desenho.
-        relevancia = rollout(pesos_por_camada)[:, 0, 1:].reshape(-1, altura, largura)
-        return tokens[:, 0], normalizar_mapa(relevancia)
+            tokens, _ = bloco(tokens)
+        return tokens[:, 0]
 
 
 class ModeloBase(nn.Module):
@@ -114,32 +93,69 @@ class ModeloBase(nn.Module):
     """
 
     def __init__(
-        self, blocos: tuple = VGG16, dimensao: int = 128, camadas: int = 3, cabecas: int = 1
+        self, blocos: tuple = VGG16, dimensao: int = 128, camadas: int = 3, cabecas: int = 1, lado: int = LADO
     ):
         super().__init__()
+        self.lado = lado
         self.towers = nn.ModuleList(Torre(blocos, dimensao, camadas, cabecas) for _ in range(3))
         self.classifier = nn.Linear(3 * dimensao, 2)
         self.register_buffer("media", torch.tensor(MEDIA_IMAGENET).view(1, 3, 1, 1), persistent=False)
         self.register_buffer("desvio", torch.tensor(DESVIO_IMAGENET).view(1, 3, 1, 1), persistent=False)
+        self.fixar_papel_em_branco()
+
+    @torch.no_grad()
+    def fixar_papel_em_branco(self) -> None:
+        """Guarda os tokens de cada torre para uma folha sem traço, a referência do mapa.
+
+        Depende dos pesos: quem carrega pesos novos chama de novo, como carregar_modelo faz.
+        """
+        folha = torch.full((1, 3, self.lado, self.lado), BRANCO)
+        tokens = torch.cat([torre(self.normalizar(folha)) for torre in self.towers])
+        self.register_buffer("papel_em_branco", tokens, persistent=False)
+
+    def normalizar(self, imagem):
+        return (imagem - self.media) / self.desvio
 
     def forward(self, relogio, cubo, trilhas):
-        resumos, mapas = zip(*(
-            torre((imagem - self.media) / self.desvio)
-            for torre, imagem in zip(self.towers, (relogio, cubo, trilhas))
-        ))
+        tokens = [torre(self.normalizar(imagem)) for torre, imagem in zip(self.towers, (relogio, cubo, trilhas))]
+        resumos = [torre.resumir(t) for torre, t in zip(self.towers, tokens)]
         probabilidade = self.classifier(torch.cat(resumos, dim=1)).softmax(dim=1)[:, 1]
-        return probabilidade, self.contribuicoes(resumos), torch.stack(mapas, dim=1)
+        contribuicoes = torch.stack(
+            [(resumo * parcela).sum(dim=1) for resumo, parcela in zip(resumos, self.parcelas())], dim=1
+        )
+        mapas = [
+            self.mapa(torre, t, contribuicoes[:, indice], indice)
+            for indice, (torre, t) in enumerate(zip(self.towers, tokens))
+        ]
+        return probabilidade, contribuicoes, torch.stack(mapas, dim=1)
 
-    def contribuicoes(self, resumos: tuple[torch.Tensor, ...]) -> torch.Tensor:
+    def parcelas(self) -> torch.Tensor:
         # Com duas classes, a probabilidade de CCL é a sigmoide da diferença entre os logits. O classificador é
         # linear, então essa diferença é a soma de uma parcela por desenho com a diferença entre os vieses.
         pesos_da_ccl = self.classifier.weight[1] - self.classifier.weight[0]
-        parcelas = pesos_da_ccl.view(len(resumos), -1)
-        return torch.stack([(resumo * parcela).sum(dim=1) for resumo, parcela in zip(resumos, parcelas)], dim=1)
+        return pesos_da_ccl.view(len(self.towers), -1)
+
+    def mapa(self, torre: Torre, tokens, contribuicao, indice: int):
+        """Oclusão das regiões (Zeiler e Fergus, 2014): quanto a contribuição do desenho cai quando cada região
+        é coberta com papel em branco.
+
+        Positivo: a região puxou o escore para CCL. Negativo: puxou para sem CCL. Uma região sem traço por
+        perto vale zero. A troca é feita nos tokens da atenção, e não na imagem, para a VGG16 rodar uma vez
+        só por desenho no tablet.
+        """
+        lote, regioes, dimensao = tokens.shape
+        troca = torch.eye(regioes, dtype=tokens.dtype).view(1, regioes, regioes, 1)
+        branco = self.papel_em_branco[indice].view(1, 1, regioes, dimensao)
+        trocados = tokens.unsqueeze(1) * (1 - troca) + branco * troca
+        resumos = torre.resumir(trocados.reshape(lote * regioes, regioes, dimensao))
+        sem_cada_regiao = (resumos @ self.parcelas()[indice]).view(lote, regioes)
+        lado_da_grade = round(regioes**0.5)
+        return (contribuicao.unsqueeze(1) - sem_cada_regiao).view(lote, lado_da_grade, lado_da_grade)
 
 
 def carregar_modelo(caminho: Path) -> ModeloBase:
     """Monta o modelo com os pesos do treino e recusa arquivo de outra arquitetura."""
     modelo = ModeloBase()
     modelo.load_state_dict(torch.load(caminho, map_location="cpu", weights_only=True))
+    modelo.fixar_papel_em_branco()
     return modelo.eval()
