@@ -190,6 +190,12 @@ uv run pytest --cov
    uv run --with scikit-learn==1.7.2 --with pandas --with opencv-contrib-python-headless --with pyyaml --with torchvision python treino/scripts/comparar_mapas.py model.pt --imagens images --rotulos label.csv --semente 1 --limite 20
    ```
 
+10. Trocar só o cubo de exames saudáveis, o que gera os números da Tabela 12 e a Figura 1:
+
+    ```bash
+    uv run --with scikit-learn==1.7.2 --with pandas --with opencv-contrib-python-headless --with pyyaml --with torchvision python treino/scripts/testar_troca_do_cubo.py modelo.onnx --imagens images --rotulos label.csv --semente 1 --figura docs/assets/troca-do-cubo.png
+    ```
+
 Sem o `model.pt`, os testes automatizados e o passo 4 sem `--imagens` ainda conferem a
 exportação, com um modelo pequeno e com imagens aleatórias.
 
@@ -470,6 +476,50 @@ Esse último ponto é um risco para a [#12 do aplicativo](https://github.com/fga
 porque a imagem pode ter o formato certo e ainda assim dar um escore deslocado. A simulação não substitui
 desenhos feitos no tablet, e o desempenho do modelo em imagens do aplicativo não foi medido.
 
+## Troca do cubo em exames saudáveis
+
+Este teste verifica se o escore reage de forma coerente a um erro em um só desenho. Foram sorteados 8 dos
+36 exames saudáveis do teste da semente 1 que têm escore abaixo de 0,2 no preparo do aplicativo. Cada um
+manteve o relógio e as trilhas originais e teve só o cubo trocado. Os cubos da Figura 1 foram desenhados por
+script, com um tremor leve no traço, e passaram pelo mesmo preparo do aplicativo.
+
+![Seis cubos desenhados por script, como o modelo os recebe: cubo certo, duas ligações faltando, sem nenhuma ligação, ligações nos cantos errados, só o quadrado da frente e um rabisco](assets/troca-do-cubo.png)
+
+**Figura 1:** Cubos usados na troca, na ordem da Tabela 12, como entram no modelo
+
+**Fonte:** [Artur Mendonça Arruda](https://github.com/ArtyMend07), 2026
+
+**Tabela 12:** Escore dos 8 exames saudáveis com o cubo trocado
+
+| Cubo | Escore médio | Menor e maior escore |
+|------|:------------:|:--------------------:|
+| Cubo original do paciente | 0,12 | 0,06 e 0,19 |
+| Certo | 0,13 | 0,06 e 0,23 |
+| Duas ligações faltando | 0,30 | 0,17 e 0,47 |
+| Sem nenhuma ligação | 0,62 | 0,45 e 0,79 |
+| Ligações nos cantos errados | 0,29 | 0,16 e 0,47 |
+| Só o quadrado da frente | 0,33 | 0,19 e 0,51 |
+| Rabisco | 0,56 | 0,39 e 0,74 |
+| Cubos dos 40 pacientes com CCL do teste | Mediana de 0,24 | Quartis de 0,13 e 0,37 |
+
+**Fonte:** [Artur Mendonça Arruda](https://github.com/ArtyMend07), 2026. Arquivo `vgg16-semente1-v1.7`. A
+última linha reúne 320 trocas, os 40 cubos em cada um dos 8 exames, e 11 % delas passaram do corte de 0,5.
+Medição de 23/11/2026.
+
+O que a Tabela 12 mostra:
+
+- O cubo certo desenhado por script dá o mesmo escore que o cubo original. O traço feito por script não
+  desloca o escore.
+- Os erros de ligação sobem o escore de 0,12 para perto de 0,3, e o cubo sem nenhuma ligação passa do corte
+  na maioria dos exames.
+- Com o relógio e as trilhas certos, um cubo errado raramente leva o exame acima do corte. O escore é um só
+  para os três desenhos, e a contribuição dos outros dois puxa para o normal.
+- O cubo sem ligações deu escore maior que o rabisco. Um rabisco não se parece com nenhum desenho do
+  conjunto de treino, e o modelo não tem por que ordená-lo como o pior caso.
+
+O teste mostra o comportamento do modelo e não mede desempenho. Os cubos são mais regulares que um desenho
+feito à mão, só 8 exames servem de base e só o cubo muda.
+
 ## Carregamento no aplicativo
 
 Pela arquitetura, o arquivo fica em `assets/modelo` no aplicativo e é carregado pelo
@@ -568,3 +618,4 @@ resolvido pela exportação.
 | 1.7 | Conferência das três saídas no conjunto de teste, com o preparo do aplicativo, e avaliação dos mapas | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 21/11/2026 | A definir | A definir |
 | 1.8 | Mapa de cada desenho por oclusão das regiões, no lugar do *attention rollout*, e comparação com outros métodos | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 21/11/2026 | A definir | A definir |
 | 1.9 | Conferência das saídas com o arquivo do APK, comparação dos mapas na Tabela 10 e tempo no tablet | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 23/11/2026 | A definir | A definir |
+| 1.10 | Teste de troca do cubo em exames saudáveis | [Artur Mendonça Arruda](https://github.com/ArtyMend07) | 23/11/2026 | A definir | A definir |
