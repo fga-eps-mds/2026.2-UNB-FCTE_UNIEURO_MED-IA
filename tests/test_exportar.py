@@ -3,7 +3,7 @@ import torch
 from torch import nn
 
 from exportacao.conferir import abrir_sessao
-from exportacao.exportar import ENTRADAS, SAIDA, exportar_onnx
+from exportacao.exportar import ENTRADAS, SAIDAS, exportar_onnx
 
 
 def test_grava_o_modelo_em_um_unico_arquivo(modelo, lado, tmp_path):
@@ -20,12 +20,12 @@ def test_entradas_seguem_a_ordem_relogio_cubo_trilhas(modelo, lado, tmp_path):
     assert [entrada.shape for entrada in sessao.get_inputs()] == [[1, 3, lado, lado]] * 3
 
 
-def test_saida_e_uma_probabilidade_por_avaliacao(modelo, lado, tmp_path):
+def test_saidas_sao_probabilidade_contribuicoes_e_mapas(modelo, lado, tmp_path):
     sessao = abrir_sessao(exportar_onnx(modelo, tmp_path / "modelo.onnx", lado))
 
-    (saida,) = sessao.get_outputs()
-    assert saida.name == SAIDA == "probabilidade_ccl"
-    assert saida.shape == [1]
+    saidas = sessao.get_outputs()
+    assert [saida.name for saida in saidas] == list(SAIDAS) == ["probabilidade_ccl", "contribuicoes", "mapas"]
+    assert [saida.shape for saida in saidas] == [[1], [1, 3], [1, 3, 8, 8]]
 
 
 def test_exporta_em_modo_de_avaliacao(lado, tmp_path):
@@ -35,7 +35,8 @@ def test_exporta_em_modo_de_avaliacao(lado, tmp_path):
             self.dropout = nn.Dropout(0.9)
 
         def forward(self, relogio, cubo, trilhas):
-            return self.dropout(relogio + cubo + trilhas).mean(dim=(1, 2, 3))
+            soma = self.dropout(relogio + cubo + trilhas)
+            return soma.mean(dim=(1, 2, 3)), soma.mean(dim=(2, 3)), soma[:, :, :8, :8]
 
     modelo = ComDropout().train()
     sessao = abrir_sessao(exportar_onnx(modelo, tmp_path / "modelo.onnx", lado))

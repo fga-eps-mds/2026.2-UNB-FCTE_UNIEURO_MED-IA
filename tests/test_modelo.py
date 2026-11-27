@@ -1,14 +1,17 @@
 import pytest
 import torch
+import torch.nn.functional as F
 
 from exportacao.imagens import amostras_aleatorias
-from exportacao.modelo import LADO, VGG16, Extrator, ModeloBase, carregar_modelo
+from exportacao.modelo import BRANCO, LADO, VGG16, Atencao, Extrator, ModeloBase, carregar_modelo
+
+GRADE_DO_MODELO_PEQUENO = (8, 8)
 
 
 def test_devolve_uma_probabilidade_por_avaliacao(modelo, lado):
     relogio, cubo, trilhas = (torch.rand(2, 3, lado, lado) for _ in range(3))
 
-    probabilidades = modelo(relogio, cubo, trilhas)
+    probabilidades, _, _ = modelo(relogio, cubo, trilhas)
 
     assert probabilidades.shape == (2,)
     assert ((probabilidades >= 0) & (probabilidades <= 1)).all()
@@ -17,7 +20,81 @@ def test_devolve_uma_probabilidade_por_avaliacao(modelo, lado):
 def test_cada_desenho_passa_por_uma_torre_propria(modelo, lado):
     (relogio, cubo, trilhas), = amostras_aleatorias(1, lado)
 
-    assert modelo(relogio, cubo, trilhas) != modelo(cubo, relogio, trilhas)
+    assert modelo(relogio, cubo, trilhas)[0] != modelo(cubo, relogio, trilhas)[0]
+
+
+@pytest.mark.parametrize("cabecas", [1, 2, 4])
+def test_atencao_explicita_da_o_mesmo_resultado_que_a_do_pytorch(cabecas):
+    torch.manual_seed(0)
+    atencao = Atencao(16, cabecas)
+    tokens = torch.rand(2, 5, 16)
+    qkv = atencao.qkv(tokens).reshape(2, 5, 3, cabecas, 16 // cabecas)
+    consulta, chave, valor = qkv.permute(2, 0, 3, 1, 4)
+    esperada = atencao.proj(F.scaled_dot_product_attention(consulta, chave, valor).transpose(1, 2).reshape(2, 5, 16))
+
+    saida, pesos = atencao(tokens)
+
+    torch.testing.assert_close(saida, esperada)
+    torch.testing.assert_close(pesos.sum(dim=-1), torch.ones(2, cabecas, 5))
+
+
+def test_desenho_em_branco_tem_mapa_zerado(modelo, lado):
+    folha = torch.full((2, 3, lado, lado), BRANCO)
+
+    _, _, mapas = modelo(folha, folha, folha)
+
+    assert mapas.shape == (2, 3, *GRADE_DO_MODELO_PEQUENO)
+    torch.testing.assert_close(mapas, torch.zeros_like(mapas))
+
+
+@pytest.mark.parametrize("regiao", [0, 27, 63])
+def test_mapa_e_a_queda_da_contribuicao_quando_a_regiao_vira_papel_em_branco(modelo, lado, regiao):
+    (relogio, cubo, trilhas), = amostras_aleatorias(1, lado)
+    torre = modelo.towers[1]
+    tokens = torre(modelo.normalizar(cubo))
+    tokens[:, regiao] = modelo.papel_em_branco[1, regiao]
+    sem_a_regiao = (torre.resumir(tokens) * modelo.parcelas()[1]).sum(dim=1)
+
+    _, contribuicoes, mapas = modelo(relogio, cubo, trilhas)
+
+    torch.testing.assert_close(mapas[:, 1].flatten(1)[:, regiao], contribuicoes[:, 1] - sem_a_regiao)
+
+
+def test_papel_em_branco_acompanha_os_pesos_carregados(tmp_path):
+    torch.manual_seed(0)
+    torch.save(ModeloBase().state_dict(), tmp_path / "model.pt")
+    folha = torch.full((1, 3, LADO, LADO), BRANCO)
+
+    carregado = carregar_modelo(tmp_path / "model.pt")
+
+    with torch.no_grad():
+        esperado = carregado.towers[2](carregado.normalizar(folha))[0]
+    torch.testing.assert_close(carregado.papel_em_branco[2], esperado)
+
+
+def test_contribuicoes_somadas_ao_vies_dao_a_probabilidade(modelo, lado):
+    relogio, cubo, trilhas = (torch.rand(2, 3, lado, lado) for _ in range(3))
+    vies_da_ccl = modelo.classifier.bias[1] - modelo.classifier.bias[0]
+
+    probabilidades, contribuicoes, _ = modelo(relogio, cubo, trilhas)
+
+    assert contribuicoes.shape == (2, 3)
+    torch.testing.assert_close(torch.sigmoid(contribuicoes.sum(dim=1) + vies_da_ccl), probabilidades)
+
+
+@pytest.mark.parametrize("desenho_trocado", [0, 1, 2], ids=["relogio", "cubo", "trilhas"])
+def test_trocar_um_desenho_muda_so_a_contribuicao_e_o_mapa_dele(modelo, lado, desenho_trocado):
+    original, outra = amostras_aleatorias(2, lado)
+    trocada = list(original)
+    trocada[desenho_trocado] = outra[desenho_trocado]
+
+    _, contribuicoes, mapas = modelo(*original)
+    _, contribuicoes_trocadas, mapas_trocados = modelo(*trocada)
+
+    mantidos = [desenho for desenho in range(3) if desenho != desenho_trocado]
+    torch.testing.assert_close(contribuicoes_trocadas[:, mantidos], contribuicoes[:, mantidos])
+    torch.testing.assert_close(mapas_trocados[:, mantidos], mapas[:, mantidos])
+    assert not torch.allclose(contribuicoes_trocadas[:, desenho_trocado], contribuicoes[:, desenho_trocado])
 
 
 def test_vgg16_reduz_o_desenho_de_256_para_8x8_como_no_treino():

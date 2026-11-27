@@ -12,10 +12,10 @@ def lado():
 
 
 @pytest.fixture
-def criar_modelo():
+def criar_modelo(lado):
     def criar(semente: int = 0, cabecas: int = 1) -> ModeloBase:
         torch.manual_seed(semente)
-        return ModeloBase(blocos=BLOCOS_PEQUENOS, dimensao=16, camadas=2, cabecas=cabecas).eval()
+        return ModeloBase(blocos=BLOCOS_PEQUENOS, dimensao=16, camadas=2, cabecas=cabecas, lado=lado).eval()
 
     return criar
 

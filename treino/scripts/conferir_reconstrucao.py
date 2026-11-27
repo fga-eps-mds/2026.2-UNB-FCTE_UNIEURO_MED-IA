@@ -56,7 +56,7 @@ def escores_do_treino(modelo: torch.nn.Module, registros: list, imagens: Path) -
 @torch.no_grad()
 def escores_reconstruidos(modelo: torch.nn.Module, registros: list, imagens: Path) -> np.ndarray:
     return np.array([
-        modelo(*(ler_desenho(imagens / registro.patient_id / f"{tarefa}.png", LADO) for tarefa in TASKS)).item()
+        modelo(*(ler_desenho(imagens / registro.patient_id / f"{tarefa}.png", LADO) for tarefa in TASKS))[0].item()
         for registro in registros
     ])
 
@@ -72,7 +72,8 @@ def main() -> None:
 
     _, _, teste = make_splits(load_records(opcoes.rotulos), opcoes.semente)
     rotulos = np.array([registro.hard_label for registro in teste])
-    treino = escores_do_treino(modelo_do_treino(opcoes.pesos, opcoes.configuracao), teste, opcoes.imagens)
+    do_treino = modelo_do_treino(opcoes.pesos, opcoes.configuracao)
+    treino = escores_do_treino(do_treino, teste, opcoes.imagens)
     reconstruido = escores_reconstruidos(carregar_modelo(opcoes.pesos), teste, opcoes.imagens)
     sem_pooling = escores_reconstruidos(reconstrucao_sem_ultimo_pooling(opcoes.pesos), teste, opcoes.imagens)
     diferenca_sem_pooling = np.abs(treino - sem_pooling)

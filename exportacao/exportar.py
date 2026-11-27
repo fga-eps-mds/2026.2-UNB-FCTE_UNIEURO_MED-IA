@@ -4,7 +4,8 @@ import torch
 from torch import nn
 
 ENTRADAS = ("relogio", "cubo", "trilhas")
-SAIDA = "probabilidade_ccl"
+# Mesma ordem do retorno de ModeloBase.forward.
+SAIDAS = ("probabilidade_ccl", "contribuicoes", "mapas")
 
 
 def exportar_onnx(modelo: nn.Module, destino: Path, lado: int) -> Path:
@@ -15,7 +16,7 @@ def exportar_onnx(modelo: nn.Module, destino: Path, lado: int) -> Path:
         modelo,
         exemplo,
         input_names=list(ENTRADAS),
-        output_names=[SAIDA],
+        output_names=list(SAIDAS),
         dynamo=True,
         verbose=False,
     )
